@@ -46,7 +46,7 @@ void Music::Play( Mix_Music * mix, /*u32 id,*/ bool loop )
     int res = fadein ? Mix_FadeInMusic( mix, loop ? -1 : 0, fadein ) : Mix_PlayMusic( mix, loop ? -1 : 0 );
 
     if ( res < 0 ) {
-        ERROR( Mix_GetError() );
+        LOG_ERROR( Mix_GetError() );
     }
     else
         music = mix;
@@ -74,7 +74,7 @@ void Music::Play( const std::string & file, bool loop )
         Mix_Music * mix = Mix_LoadMUS( file.c_str() );
 
         if ( !mix ) {
-            ERROR( Mix_GetError() );
+            LOG_ERROR( Mix_GetError() );
         }
         else
             Music::Play( mix, /*id,*/ loop );
@@ -93,7 +93,7 @@ void Music::SetFadeOut( int f )
 
 u16 Music::Volume( s16 vol )
 {
-    return Mixer::isValid() ? ( Mix_VolumeMusic( vol > MIX_MAX_VOLUME ? MIX_MAX_VOLUME : vol ) ) : 0;
+    return Mixer::isValid() ? ( static_cast<u16> ( Mix_VolumeMusic( vol > MIX_MAX_VOLUME ? MIX_MAX_VOLUME : vol ) ) ) : 0;
 }
 
 void Music::Pause( void )

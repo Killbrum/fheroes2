@@ -89,7 +89,7 @@ void PaymentConditions::UpdateCosts( const std::string & spec )
         }
     }
     else
-        VERBOSE( spec << ": " << doc.ErrorDesc() );
+        LOG_VERBOSE( spec << ": " << doc.ErrorDesc() );
 #else
     (void)spec;
 #endif

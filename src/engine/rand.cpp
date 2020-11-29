@@ -98,6 +98,6 @@ s32 Rand::Queue::Get( void )
             return ( *it ).first;
     }
 
-    ERROR( "weight not found, return 0" );
+    LOG_ERROR( "weight not found, return 0" );
     return 0;
 }

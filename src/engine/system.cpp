@@ -142,7 +142,7 @@ ListFiles System::GetListFiles( const std::string & prog, const std::string & pr
     ListFiles res;
 
 #if defined( ANDROID )
-    VERBOSE( prefix << ", " << filter );
+    LOG_VERBOSE( prefix << ", " << filter );
 
     // check assets
     StreamFile sf;

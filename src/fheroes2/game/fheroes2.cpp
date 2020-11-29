@@ -48,11 +48,11 @@ bool ReadConfigs( void );
 
 int PrintHelp( const char * basename )
 {
-    COUT( "Usage: " << basename << " [OPTIONS]" );
+    LOG_COUT( "Usage: " << basename << " [OPTIONS]" );
 #ifndef BUILD_RELEASE
-    COUT( "  -d\tdebug mode" );
+    LOG_COUT( "  -d\tdebug mode" );
 #endif
-    COUT( "  -h\tprint this help and exit" );
+    LOG_COUT( "  -h\tprint this help and exit" );
 
     return EXIT_SUCCESS;
 }
@@ -237,7 +237,7 @@ int main( int argc, char ** argv )
         }
 #ifndef ANDROID
         catch ( Error::Exception & ) {
-            VERBOSE( std::endl << conf.String() );
+            LOG_VERBOSE( std::endl << conf.String() );
         }
 #endif
     fheroes2::Display::instance().release();
@@ -319,7 +319,7 @@ void SetLangEnvPath( const Settings & conf )
                 Translation::setDomain( "fheroes2" );
         }
         else
-            ERROR( "translation not found: " << mofile );
+            LOG_ERROR( "translation not found: " << mofile );
     }
 #else
     (void)conf;

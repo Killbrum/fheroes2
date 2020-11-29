@@ -195,7 +195,7 @@ Battle::Indexes Battle::Board::GetAStarPath( const Unit & b, const Position & ds
 
     // check if target position is valid
     if ( !dst.GetHead() || ( isWide && !dst.GetTail() ) ) {
-        ERROR( "Board::GetAStarPath invalid destination for unit " + b.String() );
+        LOG_ERROR( "Board::GetAStarPath invalid destination for unit " + b.String() );
         return result;
     }
 

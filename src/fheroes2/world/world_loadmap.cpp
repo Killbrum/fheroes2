@@ -381,7 +381,7 @@ TiXmlElement & operator>>( TiXmlElement & doc, AllHeroes & /*heroes*/ )
             jail = object == MP2::OBJ_JAIL;
 
             if ( !jail ) {
-                VERBOSE( "xml error: heroes not found"
+                LOG_VERBOSE( "xml error: heroes not found"
                          << ", "
                          << "posx: " << posx << ", "
                          << "posy: " << posy );
@@ -897,7 +897,7 @@ bool World::LoadMapMAP( const std::string & filename )
             raw_data.push_back( 0 );
             doc.Parse( reinterpret_cast<const char *>( &raw_data[0] ) );
             if ( doc.Error() ) {
-                VERBOSE( "parse error: " << doc.ErrorDesc() );
+                LOG_VERBOSE( "parse error: " << doc.ErrorDesc() );
                 return false;
             }
             // SaveMemToFile(raw_data, "raw.data");
@@ -1199,7 +1199,7 @@ bool World::LoadMapMP2( const std::string & filename )
         u32 l = fs.get();
         u32 h = fs.get();
 
-        // VERBOSE("dump block: 0x" << std::setw(2) << std::setfill('0') << std::hex << l <<
+        // LOG_VERBOSE("dump block: 0x" << std::setw(2) << std::setfill('0') << std::hex << l <<
         //	std::setw(2) << std::setfill('0') << std::hex << h);
 
         if ( 0 == h && 0 == l )

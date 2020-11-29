@@ -424,7 +424,7 @@ bool Surface::Load( const std::string & fn )
 #endif
 
     if ( !surface )
-        ERROR( SDL_GetError() );
+        LOG_ERROR( SDL_GetError() );
 
     return surface;
 }
@@ -444,7 +444,7 @@ bool Surface::Save( const std::string & fn ) const
 #endif
 
     if ( 0 != res ) {
-        ERROR( SDL_GetError() );
+        LOG_ERROR( SDL_GetError() );
         return false;
     }
 

@@ -378,7 +378,7 @@ bool Maps::FileInfo::ReadMAP( const std::string & filename )
         return false;
     }
     else
-        VERBOSE( filename << ": " << doc.ErrorDesc() );
+        LOG_VERBOSE( filename << ": " << doc.ErrorDesc() );
 #else
     DEBUG( DBG_GAME, DBG_WARN,
            filename << ", "

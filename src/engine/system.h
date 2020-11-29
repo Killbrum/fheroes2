@@ -29,7 +29,7 @@
 #include <string>
 
 #if defined( __SYMBIAN32__ )
-#define VERBOSE( x )
+#define LOG_VERBOSE( x )
 #elif defined( ANDROID )
 #include <android/log.h>
 namespace std
@@ -37,26 +37,26 @@ namespace std
     static const char * android_endl = "\n";
 }
 #define endl android_endl
-#define COUT( x )                                                                                                                                                        \
+#define LOG_COUT( x )                                                                                                                                                        \
     {                                                                                                                                                                    \
         std::ostringstream osss;                                                                                                                                         \
         osss << x;                                                                                                                                                       \
         __android_log_print( ANDROID_LOG_INFO, "SDLHeroes2", "%s", osss.str().c_str() );                                                                                 \
     }
 #else
-#define COUT( x )                                                                                                                                                        \
+#define LOG_COUT( x )                                                                                                                                                        \
     {                                                                                                                                                                    \
         std::cerr << x << std::endl;                                                                                                                                     \
     }
 #endif
 
-#define VERBOSE( x )                                                                                                                                                     \
+#define LOG_VERBOSE( x )                                                                                                                                                     \
     {                                                                                                                                                                    \
-        COUT( System::GetTime() << ": [VERBOSE]\t" << __FUNCTION__ << ":  " << x );                                                                                      \
+        LOG_COUT( System::GetTime() << ": [VERBOSE]\t" << __FUNCTION__ << ":  " << x );                                                                                      \
     }
-#define ERROR( x )                                                                                                                                                       \
+#define LOG_ERROR( x )                                                                                                                                                       \
     {                                                                                                                                                                    \
-        COUT( System::GetTime() << ": [ERROR]\t" << __FUNCTION__ << ":  " << x );                                                                                        \
+        LOG_COUT( System::GetTime() << ": [ERROR]\t" << __FUNCTION__ << ":  " << x );                                                                                        \
     }
 
 #include "dir.h"

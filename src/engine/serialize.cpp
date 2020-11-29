@@ -611,7 +611,7 @@ bool StreamFile::open( const std::string & fn, const char * mode )
 {
     rw = SDL_RWFromFile( fn.c_str(), mode );
     if ( !rw )
-        ERROR( SDL_GetError() );
+        LOG_ERROR( SDL_GetError() );
     return rw;
 }
 

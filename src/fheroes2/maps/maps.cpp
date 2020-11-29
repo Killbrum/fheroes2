@@ -266,7 +266,7 @@ s32 Maps::GetIndexFromAbsPoint( s32 px, s32 py )
     const s32 res = py * world.w() + px;
 
     if ( px < 0 || py < 0 ) {
-        VERBOSE( "Maps::GetIndexFromAbsPoint: error coods, "
+        LOG_VERBOSE( "Maps::GetIndexFromAbsPoint: error coods, "
                  << "x: " << px << ", y: " << py );
         return -1;
     }

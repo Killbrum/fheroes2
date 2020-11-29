@@ -365,7 +365,7 @@ void Game::UpdateGlobalDefines( const std::string & spec )
         MonsterUpdateStatic( xml_globals->FirstChildElement( "monster_upgrade" ) );
     }
     else
-        VERBOSE( spec << ": " << doc.ErrorDesc() );
+        LOG_VERBOSE( spec << ": " << doc.ErrorDesc() );
 #else
     (void)spec;
 #endif

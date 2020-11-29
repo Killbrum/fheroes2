@@ -539,7 +539,7 @@ void Interface::Basic::EventKeyArrowPress( int dir )
 
 void Interface::Basic::EventDebug1( void )
 {
-    VERBOSE( "" );
+    LOG_VERBOSE( "" );
     /*
         Heroes* hero = GetFocusHeroes();
 
@@ -555,5 +555,5 @@ void Interface::Basic::EventDebug1( void )
 
 void Interface::Basic::EventDebug2( void )
 {
-    VERBOSE( "" );
+    LOG_VERBOSE( "" );
 }

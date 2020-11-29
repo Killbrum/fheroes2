@@ -125,5 +125,5 @@ u32 Time::Get( void ) const
 
 void Time::Print( const char * header ) const
 {
-    ERROR( ( header ? header : "time: " ) << Get() << " ms" );
+    LOG_ERROR( ( header ? header : "time: " ) << Get() << " ms" );
 }

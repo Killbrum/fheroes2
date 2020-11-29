@@ -51,7 +51,7 @@ std::vector<u8> zlibDecompress( const u8 * src, size_t srcsz, size_t realsz )
             res.clear();
             std::ostringstream os;
             os << "zlib error:" << ret;
-            ERROR( os.str().c_str() );
+            LOG_ERROR( os.str().c_str() );
         }
     }
 
@@ -73,7 +73,7 @@ std::vector<u8> zlibCompress( const u8 * src, size_t srcsz )
             res.clear();
             std::ostringstream os;
             os << "zlib error:" << ret;
-            ERROR( os.str().c_str() );
+            LOG_ERROR( os.str().c_str() );
         }
     }
 

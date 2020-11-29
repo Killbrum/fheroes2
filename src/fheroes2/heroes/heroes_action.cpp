@@ -2463,13 +2463,13 @@ void ActionToUpgradeArmyObject( Heroes & hero, u32 obj )
     } break;
 
     default:
-        ERROR( "Incorrect object type passed to ActionToUpgradeArmyObject" );
+        LOG_ERROR( "Incorrect object type passed to ActionToUpgradeArmyObject" );
         assert( 0 );
         return;
     }
 
     if ( monsToUpgrade.empty() ) {
-        ERROR( "monsToUpgrade mustn't be empty." );
+        LOG_ERROR( "monsToUpgrade mustn't be empty." );
         assert( 0 );
         return;
     }

@@ -44,7 +44,7 @@ bool SDL::Init( const u32 system )
         return false;
 
     if ( 0 > SDL_Init( system ) ) {
-        ERROR( SDL_GetError() );
+        LOG_ERROR( SDL_GetError() );
         return false;
     }
 

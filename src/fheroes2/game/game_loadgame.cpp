@@ -32,13 +32,13 @@
 
 int Game::LoadCampain( void )
 {
-    VERBOSE( "Load Campain Game: under construction." );
+    LOG_VERBOSE( "Load Campain Game: under construction." );
     return Game::LOADGAME;
 }
 
 int Game::LoadMulti( void )
 {
-    VERBOSE( "Load Multi Game: under construction." );
+    LOG_VERBOSE( "Load Multi Game: under construction." );
     return Game::LOADGAME;
 }
 
