@@ -69,7 +69,7 @@ void Mixer::Init( void )
         else {
             int channels = 0;
             Mix_QuerySpec( &hardware.freq, &hardware.format, &channels );
-            hardware.channels = channels;
+            hardware.channels = static_cast<Uint8>(channels);
 
             valid = true;
         }
@@ -162,7 +162,7 @@ u16 Mixer::Volume( int channel, s16 vol )
 {
     if ( !valid )
         return 0;
-    return Mix_Volume( channel, vol > MIX_MAX_VOLUME ? MIX_MAX_VOLUME : vol );
+    return static_cast<u16>(Mix_Volume( channel, vol > MIX_MAX_VOLUME ? MIX_MAX_VOLUME : vol ));
 }
 
 void Mixer::Pause( int channel )
@@ -192,12 +192,12 @@ void Mixer::Reset( void )
 
 u8 Mixer::isPlaying( int channel )
 {
-    return ( Mix_Volume( channel, -1 ) > 0 ) ? Mix_Playing( channel ) : 0;
+    return static_cast<u8>( ( Mix_Volume( channel, -1 ) > 0 ) ? Mix_Playing( channel ) : 0 );
 }
 
 u8 Mixer::isPaused( int channel )
 {
-    return Mix_Paused( channel );
+    return static_cast<u8>( Mix_Paused( channel ) );
 }
 
 void Mixer::Reduce( void ) {}
