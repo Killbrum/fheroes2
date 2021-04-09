@@ -20,14 +20,14 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
-#include <ctime>
 #include <sstream>
 
-#include "agg.h"
+#include "agg_image.h"
 #include "dialog.h"
 #include "direction.h"
 #include "game.h"
 #include "game_interface.h"
+#include "icn.h"
 #include "maps.h"
 #include "mp2.h"
 #include "settings.h"
@@ -49,7 +49,7 @@ Interface::Basic::Basic()
 void Interface::Basic::Reset()
 {
     const fheroes2::Display & display = fheroes2::Display::instance();
-    Settings & conf = Settings::Get().Get();
+    const Settings & conf = Settings::Get();
 
     SetHideInterface( conf.ExtGameHideInterface() );
 
@@ -57,8 +57,6 @@ void Interface::Basic::Reset()
     scrollRight = fheroes2::Rect( display.width() - BORDERWIDTH, 0, BORDERWIDTH, display.height() );
     scrollTop = fheroes2::Rect( 0, 0, display.width(), BORDERWIDTH );
     scrollBottom = fheroes2::Rect( 0, display.height() - BORDERWIDTH, display.width(), BORDERWIDTH );
-
-    system_info.Set( Font::YELLOW_SMALL );
 }
 
 Interface::GameArea & Interface::Basic::GetGameArea( void )
@@ -94,7 +92,7 @@ Interface::ControlPanel & Interface::Basic::GetControlPanel( void )
 void Interface::Basic::SetHideInterface( bool f )
 {
     const fheroes2::Display & display = fheroes2::Display::instance();
-    Settings & conf = Settings::Get().Get();
+    Settings & conf = Settings::Get();
     const u32 px = display.width() - BORDERWIDTH - RADARWIDTH;
 
     conf.SetHideInterface( f );
@@ -169,16 +167,20 @@ void Interface::Basic::SetRedraw( int f )
     redraw |= f;
 }
 
+int Interface::Basic::GetRedrawMask() const
+{
+    return redraw;
+}
+
 void Interface::Basic::Redraw( int force )
 {
-    fheroes2::Display & display = fheroes2::Display::instance();
-    Settings & conf = Settings::Get();
+    const Settings & conf = Settings::Get();
 
     const int combinedRedraw = redraw | force;
     const bool hideInterface = conf.ExtGameHideInterface();
 
     if ( combinedRedraw & REDRAW_GAMEAREA )
-        gameArea.Redraw( display, LEVEL_ALL );
+        gameArea.Redraw( fheroes2::Display::instance(), LEVEL_ALL );
 
     if ( ( hideInterface && conf.ShowRadar() ) || ( combinedRedraw & REDRAW_RADAR ) )
         radar.Redraw();
@@ -199,33 +201,10 @@ void Interface::Basic::Redraw( int force )
     if ( hideInterface && conf.ShowControlPanel() && ( redraw & REDRAW_GAMEAREA ) )
         controlPanel.Redraw();
 
-    // show system info
-    if ( conf.ExtGameShowSystemInfo() )
-        RedrawSystemInfo( ( hideInterface ? 10 : 26 ), display.height() - ( hideInterface ? 14 : 30 ), System::GetMemoryUsage() );
-
     if ( combinedRedraw & REDRAW_BORDER )
-        GameBorderRedraw();
+        GameBorderRedraw( false );
 
     redraw = 0;
-}
-
-void Interface::Basic::RedrawSystemInfo( s32 cx, s32 cy, u32 usage )
-{
-    std::ostringstream os;
-
-    os << "mem. usage: " << usage / 1024 << "Kb"
-       << ", cur. time: ";
-
-    time_t rawtime;
-    std::time( &rawtime );
-    // strtime format: Www Mmm dd hh:mm:ss yyyy
-    const char * strtime = std::ctime( &rawtime );
-
-    // draw info
-    os << std::string( &strtime[11], 8 );
-
-    system_info.Set( os.str() );
-    system_info.Blit( cx, cy );
 }
 
 s32 Interface::Basic::GetDimensionDoorDestination( s32 from, u32 distance, bool water ) const
@@ -233,7 +212,7 @@ s32 Interface::Basic::GetDimensionDoorDestination( s32 from, u32 distance, bool 
     fheroes2::Display & display = fheroes2::Display::instance();
 
     const Rect & radarArea = Interface::Basic::Get().GetRadar().GetArea();
-    Settings & conf = Settings::Get();
+    const Settings & conf = Settings::Get();
     const fheroes2::Sprite & viewDoor = fheroes2::AGG::GetICN( ( conf.ExtGameEvilInterface() ? ICN::EVIWDDOR : ICN::VIEWDDOR ), 0 );
     fheroes2::ImageRestorer back( display, radarArea.x, radarArea.y, radarArea.w, radarArea.h );
 
@@ -283,8 +262,7 @@ s32 Interface::Basic::GetDimensionDoorDestination( s32 from, u32 distance, bool 
             if ( valid ) {
                 const Maps::Tiles & tile = world.GetTiles( dst );
 
-                valid = ( ( spellROI & mp ) && ( !tile.isFog( conf.CurrentColor() ) ) && MP2::isClearGroundObject( tile.GetObject() )
-                          && water == world.GetTiles( dst ).isWater() );
+                valid = ( ( spellROI & mp ) && MP2::isClearGroundObject( tile.GetObject() ) && water == world.GetTiles( dst ).isWater() );
             }
 
             cursor.SetThemes( valid ? ( water ? Cursor::BOAT : Cursor::MOVE ) : Cursor::WAR_NONE );

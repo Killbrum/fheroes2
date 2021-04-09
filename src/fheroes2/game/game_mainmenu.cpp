@@ -21,28 +21,47 @@
  ***************************************************************************/
 
 #include "agg.h"
+#include "agg_image.h"
+#include "audio_mixer.h"
 #include "cursor.h"
 #include "dialog.h"
 #include "dialog_resolution.h"
 #include "game.h"
 #include "game_interface.h"
 #include "gamedefs.h"
+#include "icn.h"
 #include "image.h"
+#include "localevent.h"
 #include "mus.h"
 #include "settings.h"
+#include "system.h"
 #include "text.h"
 #include "ui_button.h"
 
-#define NEWGAME_DEFAULT 1
-#define LOADGAME_DEFAULT 5
-#define HIGHSCORES_DEFAULT 9
-#define CREDITS_DEFAULT 13
-#define QUIT_DEFAULT 17
+namespace
+{
+    struct ButtonInfo
+    {
+        u32 frame;
+        fheroes2::Button & button;
+        bool isOver;
+        bool wasOver;
+    };
+
+    enum
+    {
+        NEWGAME_DEFAULT = 1,
+        LOADGAME_DEFAULT = 5,
+        HIGHSCORES_DEFAULT = 9,
+        CREDITS_DEFAULT = 13,
+        QUIT_DEFAULT = 17
+    };
+}
 
 int Game::MainMenu( bool isFirstGameRun )
 {
     Mixer::Pause();
-    AGG::PlayMusic( MUS::MAINMENU );
+    AGG::PlayMusic( MUS::MAINMENU, true, true );
 
     Settings & conf = Settings::Get();
 
@@ -64,8 +83,10 @@ int Game::MainMenu( bool isFirstGameRun )
             fheroes2::Copy( fheroes2::AGG::GetICN( ICN::HEROES, 0 ), display );
         }
 
-        Dialog::Message( "Please remember", "You can always change game resolution by clicking on the door on the left side of main menu. Enjoy the game!", Font::BIG,
-                         Dialog::OK );
+        Dialog::Message( "Please remember",
+                         "You can always change game resolution by clicking on the door on the left side of main menu. To switch between windowed "
+                         "and full screen modes press 'F4' key on the keyboard. Enjoy the game!",
+                         Font::BIG, Dialog::OK );
     }
 
     LocalEvent & le = LocalEvent::Get();
@@ -95,23 +116,18 @@ int Game::MainMenu( bool isFirstGameRun )
 
     const double scaleX = static_cast<double>( display.width() ) / fheroes2::Display::DEFAULT_WIDTH;
     const double scaleY = static_cast<double>( display.height() ) / fheroes2::Display::DEFAULT_HEIGHT;
-    const Rect resolutionArea( 63 * scaleX, 202 * scaleY, 90 * scaleX, 160 * scaleY );
+    const fheroes2::Rect resolutionArea( static_cast<int32_t>( 63 * scaleX ), static_cast<int32_t>( 202 * scaleY ), static_cast<int32_t>( 90 * scaleX ),
+                                         static_cast<int32_t>( 160 * scaleY ) );
 
     u32 lantern_frame = 0;
 
-    struct ButtonInfo
-    {
-        u32 frame;
-        fheroes2::Button & button;
-        bool isOver;
-        bool wasOver;
-    } buttons[] = {{NEWGAME_DEFAULT, buttonNewGame, false, false},
-                   {LOADGAME_DEFAULT, buttonLoadGame, false, false},
-                   {HIGHSCORES_DEFAULT, buttonHighScores, false, false},
-                   {CREDITS_DEFAULT, buttonCredits, false, false},
-                   {QUIT_DEFAULT, buttonQuit, false, false}};
+    ButtonInfo buttons[] = {{NEWGAME_DEFAULT, buttonNewGame, false, false},
+                            {LOADGAME_DEFAULT, buttonLoadGame, false, false},
+                            {HIGHSCORES_DEFAULT, buttonHighScores, false, false},
+                            {CREDITS_DEFAULT, buttonCredits, false, false},
+                            {QUIT_DEFAULT, buttonQuit, false, false}};
 
-    for ( u32 i = 0; le.MouseMotion() && i < ARRAY_COUNT( buttons ); i++ ) {
+    for ( u32 i = 0; le.MouseMotion() && i < ARRAY_COUNT( buttons ); ++i ) {
         cursor.Hide();
         const fheroes2::Sprite & sprite = fheroes2::AGG::GetICN( ICN::BTNSHNGL, buttons[i].frame );
         fheroes2::Blit( sprite, display, sprite.x(), sprite.y() );
@@ -126,11 +142,14 @@ int Game::MainMenu( bool isFirstGameRun )
                 //    display.Fade();
                 break;
             }
+            else {
+                continue;
+            }
         }
 
         bool redrawScreen = false;
 
-        for ( u32 i = 0; i < ARRAY_COUNT( buttons ); i++ ) {
+        for ( u32 i = 0; i < ARRAY_COUNT( buttons ); ++i ) {
             buttons[i].wasOver = buttons[i].isOver;
 
             if ( le.MousePressLeft( buttons[i].button.area() ) ) {
@@ -146,7 +165,7 @@ int Game::MainMenu( bool isFirstGameRun )
                 u32 frame = buttons[i].frame;
 
                 if ( buttons[i].isOver && !buttons[i].wasOver )
-                    frame++;
+                    ++frame;
 
                 if ( !redrawScreen ) {
                     cursor.Hide();
@@ -164,12 +183,8 @@ int Game::MainMenu( bool isFirstGameRun )
 
         if ( HotKeyPressEvent( EVENT_BUTTON_NEWGAME ) || le.MouseClickLeft( buttonNewGame.area() ) )
             return NEWGAME;
-        else if ( HotKeyPressEvent( EVENT_BUTTON_LOADGAME ) || le.MouseClickLeft( buttonLoadGame.area() ) ) {
-            if ( ListFiles::IsEmpty( Settings::GetSaveDir(), ".sav", false ) )
-                Dialog::Message( _( "Load Game" ), _( "No save files to load." ), Font::BIG, Dialog::OK );
-            else
-                return LOADGAME;
-        }
+        else if ( HotKeyPressEvent( EVENT_BUTTON_LOADGAME ) || le.MouseClickLeft( buttonLoadGame.area() ) )
+            return LOADGAME;
         else if ( HotKeyPressEvent( EVENT_BUTTON_HIGHSCORES ) || le.MouseClickLeft( buttonHighScores.area() ) )
             return HIGHSCORES;
         else if ( HotKeyPressEvent( EVENT_BUTTON_CREDITS ) || le.MouseClickLeft( buttonCredits.area() ) )
@@ -206,7 +221,8 @@ int Game::MainMenu( bool isFirstGameRun )
 
         if ( AnimateInfrequentDelay( MAIN_MENU_DELAY ) ) {
             cursor.Hide();
-            const fheroes2::Sprite & lantern12 = fheroes2::AGG::GetICN( ICN::SHNGANIM, ICN::AnimationFrame( ICN::SHNGANIM, 0, lantern_frame++ ) );
+            const fheroes2::Sprite & lantern12 = fheroes2::AGG::GetICN( ICN::SHNGANIM, ICN::AnimationFrame( ICN::SHNGANIM, 0, lantern_frame ) );
+            ++lantern_frame;
             fheroes2::Blit( lantern12, display, lantern12.x(), lantern12.y() );
             cursor.Show();
             display.render();

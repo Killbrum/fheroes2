@@ -24,23 +24,22 @@
 #include <cstring>
 #include <sstream>
 
-#include "agg.h"
 #include "cursor.h"
-#include "dialog.h"
-#include "dialog_selectitems.h"
 #include "game.h"
 #include "game_static.h"
 #include "heroes.h"
 #include "race.h"
+#include "rand.h"
 #include "settings.h"
 #include "skill.h"
 #include "skill_static.h"
 #include "text.h"
+#include "world.h"
 
 namespace Skill
 {
     int SecondaryGetWeightSkillFromRace( int race, int skill );
-    int SecondaryPriorityFromRace( int, const std::vector<int> & );
+    int SecondaryPriorityFromRace( int, const std::vector<int> &, uint32_t seed );
 
     const int secskills[]
         = {Secondary::PATHFINDING, Secondary::ARCHERY,   Secondary::LOGISTICS, Secondary::SCOUTING,   Secondary::DIPLOMACY, Secondary::NAVIGATION, Secondary::LEADERSHIP,
@@ -114,7 +113,7 @@ int Skill::Primary::GetInitialSpell( int race )
     return ptr ? ptr->initial_spell : 0;
 }
 
-int Skill::Primary::LevelUp( int race, int level )
+int Skill::Primary::LevelUp( int race, int level, uint32_t seed )
 {
     Rand::Queue percents( MAXPRIMARYSKILL );
 
@@ -134,7 +133,7 @@ int Skill::Primary::LevelUp( int race, int level )
         }
     }
 
-    int result = percents.Size() ? percents.Get() : UNKNOWN;
+    int result = percents.Size() ? percents.GetWithSeed( seed ) : UNKNOWN;
 
     switch ( result ) {
     case ATTACK:
@@ -220,13 +219,6 @@ std::string Skill::Primary::StringDescription( int skill, const Heroes * hero )
     return res;
 }
 
-std::string Skill::Primary::StringSkills( const std::string & sep ) const
-{
-    std::ostringstream os;
-    os << GetString( attack ) << sep << GetString( defense ) << sep << GetString( knowledge ) << sep << GetString( power );
-    return os.str();
-}
-
 const char * Skill::Level::String( int level )
 {
     const char * str_level[] = {"None", _( "skill|Basic" ), _( "skill|Advanced" ), _( "skill|Expert" )};
@@ -243,6 +235,15 @@ const char * Skill::Level::String( int level )
     }
 
     return str_level[0];
+}
+
+std::string Skill::Level::StringWithBonus( const Heroes & hero, int skill, int level )
+{
+    const std::string levelStr = String( level );
+    if ( skill == Skill::Secondary::NECROMANCY && Skill::GetNecromancyBonus( hero ) > 0 ) {
+        return levelStr + "+" + std::to_string( Skill::GetNecromancyBonus( hero ) );
+    }
+    return levelStr;
 }
 
 Skill::Secondary::Secondary()
@@ -358,7 +359,7 @@ int Skill::Secondary::RandForWitchsHut( void )
             v.push_back( WISDOM );
     }
 
-    return v.empty() ? UNKNOWN : *Rand::Get( v );
+    return v.empty() ? UNKNOWN : Rand::Get( v );
 }
 
 /* index sprite from SECSKILL */
@@ -416,7 +417,7 @@ const char * Skill::Secondary::String( int skill )
     return str_skill[14];
 }
 
-const char * Skill::Secondary::GetName( void ) const
+std::string Skill::Secondary::GetName( void ) const
 {
     const char * name_skill[]
         = {_( "Basic Pathfinding" ),  _( "Advanced Pathfinding" ), _( "Expert Pathfinding" ),  _( "Basic Archery" ),      _( "Advanced Archery" ),
@@ -432,7 +433,15 @@ const char * Skill::Secondary::GetName( void ) const
     return isValid() ? name_skill[( Level() - 1 ) + ( Skill() - 1 ) * 3] : "unknown";
 }
 
-std::string Skill::Secondary::GetDescription( void ) const
+std::string Skill::Secondary::GetNameWithBonus( const Heroes & hero ) const
+{
+    if ( Skill() == NECROMANCY && Skill::GetNecromancyBonus( hero ) > 0 ) {
+        return GetName() + " (+" + std::to_string( Skill::GetNecromancyBonus( hero ) ) + ")";
+    }
+    return GetName();
+}
+
+std::string Skill::Secondary::GetDescription( const Heroes & hero ) const
 {
     u32 count = GetValues();
     std::string str = "unknown";
@@ -556,9 +565,12 @@ std::string Skill::Secondary::GetDescription( void ) const
         }
         break;
     case NECROMANCY: {
-        const std::string tmpDescription( std::string( GetName() )
-                                          + std::string( " allows %{count} percent of the creatures killed in combat to be brought back from the dead as Skeletons." ) );
-        str = _n( tmpDescription.c_str(), tmpDescription.c_str(), count );
+        const uint32_t necroCount = Skill::GetNecromancyPercent( hero );
+        const std::string tmpDescription(
+            std::string( GetNameWithBonus( hero ) )
+            + std::string( " allows %{necrocount} percent of the creatures killed in combat to be brought back from the dead as Skeletons." ) );
+        str = _n( tmpDescription.c_str(), tmpDescription.c_str(), necroCount );
+        StringReplace( str, "%{necrocount}", necroCount );
         break;
     }
     case ESTATES:
@@ -732,30 +744,19 @@ int Skill::SecondaryGetWeightSkillFromRace( int race, int skill )
     return 0;
 }
 
-/*
-std::vector<int> Skill::SecondarySkills(void)
-{
-    const int vals[] = { Secondary::PATHFINDING, Secondary::ARCHERY, Secondary::LOGISTICS, Secondary::SCOUTING,
-            Secondary::DIPLOMACY, Secondary::NAVIGATION, Secondary::LEADERSHIP, Secondary::WISDOM, Secondary::MYSTICISM,
-            Secondary::LUCK, Secondary::BALLISTICS, Secondary::EAGLEEYE, Secondary::NECROMANCY, Secondary::ESTATES };
-
-    return std::vector<int>(vals, ARRAY_COUNT_END(vals));
-}
-*/
-
-int Skill::SecondaryPriorityFromRace( int race, const std::vector<int> & exclude )
+int Skill::SecondaryPriorityFromRace( int race, const std::vector<int> & exclude, uint32_t seed )
 {
     Rand::Queue parts( MAXSECONDARYSKILL );
 
     for ( u32 ii = 0; ii < ARRAY_COUNT( secskills ); ++ii )
-        if ( exclude.empty() || exclude.end() == std::find( exclude.begin(), exclude.end(), secskills[ii] ) )
+        if ( exclude.end() == std::find( exclude.begin(), exclude.end(), secskills[ii] ) )
             parts.Push( secskills[ii], SecondaryGetWeightSkillFromRace( race, secskills[ii] ) );
 
-    return parts.Size() ? parts.Get() : Secondary::UNKNOWN;
+    return parts.Size() ? parts.GetWithSeed( seed ) : Secondary::UNKNOWN;
 }
 
 /* select secondary skills for level up */
-void Skill::SecSkills::FindSkillsForLevelUp( int race, Secondary & sec1, Secondary & sec2 ) const
+void Skill::SecSkills::FindSkillsForLevelUp( int race, uint32_t seedSkill1, uint32_t seedSkill2, Secondary & sec1, Secondary & sec2 ) const
 {
     std::vector<int> exclude_skills;
     exclude_skills.reserve( MAXSECONDARYSKILL + HEROESMAXSKILL );
@@ -772,25 +773,17 @@ void Skill::SecSkills::FindSkillsForLevelUp( int race, Secondary & sec1, Seconda
                 exclude_skills.push_back( secskills[ii] );
     }
 
-    sec1.SetSkill( SecondaryPriorityFromRace( race, exclude_skills ) );
+    sec1.SetSkill( SecondaryPriorityFromRace( race, exclude_skills, seedSkill1 ) );
 
     if ( Secondary::UNKNOWN != sec1.Skill() ) {
         exclude_skills.push_back( sec1.Skill() );
-        sec2.SetSkill( SecondaryPriorityFromRace( race, exclude_skills ) );
+        sec2.SetSkill( SecondaryPriorityFromRace( race, exclude_skills, seedSkill2 ) );
 
         sec1.SetLevel( GetLevel( sec1.Skill() ) );
         sec2.SetLevel( GetLevel( sec2.Skill() ) );
 
         sec1.NextLevel();
         sec2.NextLevel();
-    }
-    else if ( Settings::Get().ExtHeroAllowBannedSecSkillsUpgrade() ) {
-        const_iterator it = std::find_if( begin(), end(), []( const Secondary & v ) { return !v.isLevel( static_cast<int>( Level::EXPERT ) ); } );
-        if ( it != end() ) {
-            sec1.SetSkill( ( *it ).Skill() );
-            sec1.SetLevel( GetLevel( sec1.Skill() ) );
-            sec1.NextLevel();
-        }
     }
 }
 
@@ -801,7 +794,7 @@ void StringAppendModifiers( std::string & str, int value )
     else if ( value > 0 )
         str.append( " +" );
 
-    str.append( GetString( value ) );
+    str.append( std::to_string( value ) );
 }
 
 int Skill::GetLeadershipModifiers( int level, std::string * strs = NULL )
@@ -828,6 +821,22 @@ int Skill::GetLuckModifiers( int level, std::string * strs = NULL )
     }
 
     return skill.GetValues();
+}
+
+uint32_t Skill::GetNecromancyBonus( const HeroBase & hero )
+{
+    const uint32_t shrineCount = world.GetKingdom( hero.GetColor() ).GetCountNecromancyShrineBuild();
+    const uint32_t artifactCount = hero.HasArtifact( Artifact::SPADE_NECROMANCY );
+    // cap bonus at 7
+    return std::min( 7u, shrineCount + artifactCount );
+}
+
+uint32_t Skill::GetNecromancyPercent( const HeroBase & hero )
+{
+    uint32_t percent = hero.GetSecondaryValues( Skill::Secondary::NECROMANCY );
+    percent += 10 * GetNecromancyBonus( hero );
+    // cap at 100% bonus
+    return std::min( percent, 100u );
 }
 
 StreamBase & Skill::operator<<( StreamBase & msg, const Primary & skill )

@@ -31,7 +31,10 @@
 #include "kingdom.h"
 #include "mus.h"
 #include "settings.h"
+#include "text.h"
 #include "world.h"
+
+#include <cassert>
 
 const char * GameOver::GetString( int cond )
 {
@@ -314,22 +317,53 @@ int GameOver::Result::LocalCheckGameOver( void )
     if ( continue_game )
         return Game::CANCEL;
 
-    const bool isSinglePlayer = ( Colors( Players::HumanColors() ).size() == 1 );
     int res = Game::CANCEL;
+    const bool isSinglePlayer = ( Colors( Players::HumanColors() ).size() == 1 );
+
+    const int humanColors = Players::HumanColors();
+    int activeHumanColors = 0;
+    int activeColors = 0;
+    const Colors colors2( colors );
+    for ( Colors::const_iterator it = colors2.begin(); it != colors2.end(); ++it ) {
+        if ( !world.GetKingdom( *it ).isPlay() ) {
+            if ( !isSinglePlayer || ( *it & humanColors ) == 0 ) {
+                Game::DialogPlayers( *it, _( "%{color} player has been vanquished!" ) );
+            }
+            colors &= ( ~*it );
+        }
+        else {
+            ++activeColors;
+            if ( *it & humanColors ) {
+                ++activeHumanColors;
+            }
+        }
+    }
 
     if ( isSinglePlayer ) {
+        assert( activeHumanColors <= 1 );
+
+        const Kingdom & myKingdom = world.GetKingdom( humanColors );
         const Settings & conf = Settings::Get();
-        const int currentColor = conf.CurrentColor();
-        const Kingdom & myKingdom = world.GetKingdom( currentColor );
-        if ( GameOver::COND_NONE != ( result = world.CheckKingdomWins( myKingdom ) ) ) {
-            GameOver::DialogWins( result );
-            Video::ShowVideo( Settings::GetLastFile( System::ConcatePath( "heroes2", "anim" ), "WIN.SMK" ), false );
-            res = Game::HIGHSCORES;
-        }
-        else if ( GameOver::COND_NONE != ( result = world.CheckKingdomLoss( myKingdom ) ) ) {
-            GameOver::DialogLoss( result );
-            Video::ShowVideo( Settings::GetLastFile( System::ConcatePath( "heroes2", "anim" ), "LOSE.SMK" ), true );
-            res = Game::MAINMENU;
+
+        if ( myKingdom.isControlHuman() ) {
+            if ( GameOver::COND_NONE != ( result = world.CheckKingdomWins( myKingdom ) ) ) {
+                GameOver::DialogWins( result );
+
+                if ( conf.GameType() & Game::TYPE_CAMPAIGN ) {
+                    res = Game::COMPLETE_CAMPAIGN_SCENARIO;
+                }
+                else {
+                    AGG::ResetMixer();
+                    Video::ShowVideo( "WIN.SMK", Video::VideoAction::WAIT_FOR_USER_INPUT );
+                    res = Game::HIGHSCORES;
+                }
+            }
+            else if ( GameOver::COND_NONE != ( result = world.CheckKingdomLoss( myKingdom ) ) ) {
+                GameOver::DialogLoss( result );
+                AGG::ResetMixer();
+                Video::ShowVideo( "LOSE.SMK", Video::VideoAction::LOOP_VIDEO );
+                res = Game::MAINMENU;
+            }
         }
 
         // set: continue after victory
@@ -339,28 +373,11 @@ int GameOver::Result::LocalCheckGameOver( void )
                 if ( res == Game::HIGHSCORES )
                     Game::HighScores();
                 res = Game::CANCEL;
-                Interface::Basic::Get().SetRedraw( REDRAW_ALL );
+                Interface::Basic::Get().SetRedraw( Interface::REDRAW_ALL );
             }
         }
     }
     else {
-        const int humanColors = Players::HumanColors();
-        int activeHumanColors = 0;
-        int activeColors = 0;
-        const Colors colors2( colors );
-        for ( Colors::const_iterator it = colors2.begin(); it != colors2.end(); ++it ) {
-            if ( !world.GetKingdom( *it ).isPlay() ) {
-                Game::DialogPlayers( *it, _( "%{color} player has been vanquished!" ) );
-                colors &= ( ~*it );
-            }
-            else {
-                ++activeColors;
-                if ( *it & humanColors ) {
-                    ++activeHumanColors;
-                }
-            }
-        }
-
         if ( activeHumanColors == 0 || ( activeHumanColors == 1 && activeHumanColors == activeColors ) ) {
             res = Game::MAINMENU;
         }

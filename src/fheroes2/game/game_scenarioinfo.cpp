@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "agg.h"
+#include "agg_image.h"
 #include "cursor.h"
 #include "dialog.h"
 #include "dialog_selectscenario.h"
@@ -32,13 +33,14 @@
 #include "game.h"
 #include "game_interface.h"
 #include "gamedefs.h"
+#include "icn.h"
 #include "kingdom.h"
+#include "logging.h"
 #include "maps_fileinfo.h"
 #include "mus.h"
 #include "player_info.h"
 #include "race.h"
-#include "settings.h"
-#include "splitter.h"
+#include "system.h"
 #include "text.h"
 #include "ui_button.h"
 #include "ui_tool.h"
@@ -74,7 +76,7 @@ void updatePlayers( Players & players, const int humanPlayerCount )
 
 size_t GetSelectedMapId( MapsFileInfoList & lists )
 {
-    Settings & conf = Settings::Get();
+    const Settings & conf = Settings::Get();
 
     const std::string & mapName = conf.CurrentFileInfo().name;
     const std::string & mapFileName = System::GetBasename( conf.CurrentFileInfo().file );
@@ -92,7 +94,7 @@ int Game::ScenarioInfo( void )
 {
     Settings & conf = Settings::Get();
 
-    AGG::PlayMusic( MUS::MAINMENU );
+    AGG::PlayMusic( MUS::MAINMENU, true, true );
 
     MapsFileInfoList lists;
     if ( !PrepareMapsFileInfoList( lists, ( conf.IsGameType( Game::TYPE_MULTI ) ) ) ) {
@@ -128,11 +130,11 @@ int Game::ScenarioInfo( void )
 
     const uint32_t ngextraWidth = ngextra.width();
     const uint32_t ngextraHeight = ngextra.height();
-    coordDifficulty.push_back( Rect( rectPanel.x + 21, rectPanel.y + 91, ngextraWidth, ngextraHeight ) );
-    coordDifficulty.push_back( Rect( rectPanel.x + 98, rectPanel.y + 91, ngextraWidth, ngextraHeight ) );
-    coordDifficulty.push_back( Rect( rectPanel.x + 174, rectPanel.y + 91, ngextraWidth, ngextraHeight ) );
-    coordDifficulty.push_back( Rect( rectPanel.x + 251, rectPanel.y + 91, ngextraWidth, ngextraHeight ) );
-    coordDifficulty.push_back( Rect( rectPanel.x + 328, rectPanel.y + 91, ngextraWidth, ngextraHeight ) );
+    coordDifficulty.emplace_back( rectPanel.x + 21, rectPanel.y + 91, ngextraWidth, ngextraHeight );
+    coordDifficulty.emplace_back( rectPanel.x + 98, rectPanel.y + 91, ngextraWidth, ngextraHeight );
+    coordDifficulty.emplace_back( rectPanel.x + 174, rectPanel.y + 91, ngextraWidth, ngextraHeight );
+    coordDifficulty.emplace_back( rectPanel.x + 251, rectPanel.y + 91, ngextraWidth, ngextraHeight );
+    coordDifficulty.emplace_back( rectPanel.x + 328, rectPanel.y + 91, ngextraWidth, ngextraHeight );
 
     fheroes2::Button buttonSelectMaps( rectPanel.x + 309, rectPanel.y + 45, ICN::NGEXTRA, 64, 65 );
     fheroes2::Button buttonOk( rectPanel.x + 31, rectPanel.y + 380, ICN::NGEXTRA, 66, 67 );
@@ -152,20 +154,24 @@ int Game::ScenarioInfo( void )
         const std::string & mapFileName = System::GetBasename( conf.CurrentFileInfo().file );
         for ( MapsFileInfoList::const_iterator mapIter = lists.begin(); mapIter != lists.end(); ++mapIter ) {
             if ( ( mapIter->name == mapName ) && ( System::GetBasename( mapIter->file ) == mapFileName ) ) {
-                if ( mapIter->file != conf.CurrentFileInfo().file )
+                if ( mapIter->file == conf.CurrentFileInfo().file ) {
                     conf.SetCurrentFileInfo( *mapIter );
-
-                resetStartingSettings = false;
-                break;
+                    updatePlayers( players, humanPlayerCount );
+                    LoadPlayers( mapIter->file, players );
+                    resetStartingSettings = false;
+                    break;
+                }
             }
         }
     }
 
     // set first map's settings
-    if ( resetStartingSettings )
+    if ( resetStartingSettings ) {
         conf.SetCurrentFileInfo( lists.front() );
+        updatePlayers( players, humanPlayerCount );
+        LoadPlayers( lists.front().file, players );
+    }
 
-    updatePlayers( players, humanPlayerCount );
     playersInfo.UpdateInfo( players, pointOpponentInfo, pointClassInfo );
 
     RedrawScenarioStaticInfo( rectPanel, true );
@@ -180,7 +186,7 @@ int Game::ScenarioInfo( void )
 
     fheroes2::MovableSprite levelCursor( ngextra );
 
-    switch ( conf.GameDifficulty() ) {
+    switch ( Game::getDifficulty() ) {
     case Difficulty::EASY:
         levelCursor.setPosition( coordDifficulty[0].x, coordDifficulty[0].y );
         break;
@@ -213,6 +219,9 @@ int Game::ScenarioInfo( void )
                     fheroes2::FadeDisplay();
                 return QUITGAME;
             }
+            else {
+                continue;
+            }
         }
 
         // press button
@@ -224,17 +233,20 @@ int Game::ScenarioInfo( void )
         if ( HotKeyPressEvent( Game::EVENT_BUTTON_SELECT ) || le.MouseClickLeft( buttonSelectMaps.area() ) ) {
             const Maps::FileInfo * fi = Dialog::SelectScenario( lists, GetSelectedMapId( lists ) );
             if ( fi ) {
+                SavePlayers( conf.CurrentFileInfo().file, conf.GetPlayers() );
                 conf.SetCurrentFileInfo( *fi );
+                LoadPlayers( fi->file, players );
+
                 updatePlayers( players, humanPlayerCount );
                 playersInfo.UpdateInfo( players, pointOpponentInfo, pointClassInfo );
 
                 cursor.Hide();
                 RedrawScenarioStaticInfo( rectPanel );
                 RedrawDifficultyInfo( pointDifficultyInfo );
+                playersInfo.resetSelection();
                 playersInfo.RedrawInfo();
                 RedrawRatingInfo( rating );
-                levelCursor.setPosition( coordDifficulty[1].x, coordDifficulty[1].y );
-                conf.SetGameDifficulty( Difficulty::NORMAL );
+                levelCursor.setPosition( coordDifficulty[Game::getDifficulty()].x, coordDifficulty[Game::getDifficulty()].y ); // From 0 to 4, see: Difficulty enum
                 buttonOk.draw();
                 buttonCancel.draw();
             }
@@ -250,7 +262,7 @@ int Game::ScenarioInfo( void )
         else
             // click ok
             if ( HotKeyPressEvent( EVENT_DEFAULT_READY ) || le.MouseClickLeft( buttonOk.area() ) ) {
-            DEBUG( DBG_GAME, DBG_INFO, "select maps: " << conf.MapsFile() << ", difficulty: " << Difficulty::String( conf.GameDifficulty() ) );
+            DEBUG_LOG( DBG_GAME, DBG_INFO, "select maps: " << conf.MapsFile() << ", difficulty: " << Difficulty::String( Game::getDifficulty() ) );
             result = STARTGAME;
             break;
         }
@@ -262,7 +274,7 @@ int Game::ScenarioInfo( void )
                 cursor.Hide();
                 levelCursor.setPosition( coordDifficulty[index].x, coordDifficulty[index].y );
                 levelCursor.redraw();
-                conf.SetGameDifficulty( index );
+                Game::saveDifficulty( index );
                 RedrawRatingInfo( rating );
                 cursor.Show();
                 display.render();
@@ -305,6 +317,8 @@ int Game::ScenarioInfo( void )
         }
     }
 
+    SavePlayers( conf.CurrentFileInfo().file, conf.GetPlayers() );
+
     cursor.Hide();
 
     if ( result == STARTGAME ) {
@@ -326,16 +340,16 @@ int Game::ScenarioInfo( void )
             }
             else {
                 result = MAINMENU;
-                DEBUG( DBG_GAME, DBG_WARN,
-                       conf.MapsFile() << ", "
-                                       << "unknown map format" );
+                DEBUG_LOG( DBG_GAME, DBG_WARN,
+                           conf.MapsFile() << ", "
+                                           << "unknown map format" );
             }
         }
         else {
             result = MAINMENU;
-            DEBUG( DBG_GAME, DBG_WARN,
-                   conf.MapsFile() << ", "
-                                   << "unknown map format" );
+            DEBUG_LOG( DBG_GAME, DBG_WARN,
+                       conf.MapsFile() << ", "
+                                       << "unknown map format" );
         }
     }
 
@@ -349,7 +363,7 @@ u32 Game::GetStep4Player( u32 current, u32 width, u32 count )
 
 void RedrawScenarioStaticInfo( const Rect & rt, bool firstDraw )
 {
-    Settings & conf = Settings::Get();
+    const Settings & conf = Settings::Get();
     fheroes2::Display & display = fheroes2::Display::instance();
 
     if ( firstDraw ) {
@@ -359,6 +373,9 @@ void RedrawScenarioStaticInfo( const Rect & rt, bool firstDraw )
     // image panel
     const fheroes2::Sprite & panel = fheroes2::AGG::GetICN( ICN::NGHSBKG, 0 );
     fheroes2::Blit( panel, display, rt.x, rt.y );
+
+    // Redraw select button as the original image has a wrong position of it
+    fheroes2::Blit( fheroes2::AGG::GetICN( ICN::NGEXTRA, 64 ), display, rt.x + 309, rt.y + 45 );
 
     // text scenario
     Text text( _( "Scenario:" ), Font::BIG );

@@ -25,11 +25,11 @@
 
 #include <list>
 
-#include "ai.h"
 #include "battle_board.h"
 #include "battle_grave.h"
 #include "battle_pathfinding.h"
 #include "gamedefs.h"
+#include "serialize.h"
 #include "spell_storage.h"
 
 #define ARENAW 11
@@ -97,7 +97,7 @@ namespace Battle
 
         const SpellStorage & GetUsageSpells( void ) const;
 
-        void DialogBattleSummary( const Result & ) const;
+        bool DialogBattleSummary( const Result & res, bool transferArtifacts, bool allowToCancel ) const;
         int DialogBattleHero( const HeroBase &, bool ) const;
 
         void FadeArena( bool clearMessageLog ) const;
@@ -105,16 +105,18 @@ namespace Battle
         // returns pair with move cell index and distance
         std::pair<int, uint32_t> CalculateMoveToUnit( const Unit & target );
 
-        uint32_t CalculateMoveDistance( int32_t indexTo );
-        bool hexIsAccessible( int32_t indexTo );
-        bool hexIsPassable( int32_t indexTo );
+        uint32_t CalculateMoveDistance( int32_t indexTo ) const;
+        bool hexIsAccessible( int32_t indexTo ) const;
+        bool hexIsPassable( int32_t indexTo ) const;
+        Indexes getAllAvailableMoves( uint32_t moveRange ) const;
+        Indexes CalculateTwoMoveOverlap( int32_t indexTo, uint32_t movementRange = 0 ) const;
         Indexes GetPath( const Unit &, const Position & );
 
         void ApplyAction( Command & );
 
-        TargetsInfo GetTargetsForDamage( Unit &, Unit &, s32 );
-        void TargetsApplyDamage( Unit &, Unit &, TargetsInfo & );
-        TargetsInfo GetTargetsForSpells( const HeroBase *, const Spell &, s32 );
+        TargetsInfo GetTargetsForDamage( const Unit &, Unit &, s32 );
+        void TargetsApplyDamage( Unit &, const Unit &, TargetsInfo & );
+        TargetsInfo GetTargetsForSpells( const HeroBase * hero, const Spell & spell, int32_t dest, bool showMessages );
         void TargetsApplySpell( const HeroBase *, const Spell &, TargetsInfo & );
 
         bool isSpellcastDisabled() const;
@@ -128,13 +130,13 @@ namespace Battle
         bool CanSurrenderOpponent( int color ) const;
         bool CanRetreatOpponent( int color ) const;
 
-        void ApplyActionSpellSummonElemental( Command &, const Spell & );
+        void ApplyActionSpellSummonElemental( const Command &, const Spell & );
         void ApplyActionSpellMirrorImage( Command & );
         void ApplyActionSpellTeleport( Command & );
-        void ApplyActionSpellEarthQuake( Command & );
+        void ApplyActionSpellEarthQuake( const Command & );
         void ApplyActionSpellDefaults( Command &, const Spell & );
 
-        u32 GetObstaclesPenalty( const Unit &, const Unit & ) const;
+        bool IsShootingPenalty( const Unit &, const Unit & ) const;
         int GetICNCovr( void ) const;
 
         u32 GetCastleTargetValue( int ) const;
@@ -147,6 +149,12 @@ namespace Battle
         static Graveyard * GetGraveyard( void );
 
     private:
+        Arena( const Arena & ) = delete;
+        Arena & operator=( const Arena & ) = delete;
+
+        Arena( const Arena && ) = delete;
+        Arena & operator=( const Arena && ) = delete;
+
         friend StreamBase & operator<<( StreamBase &, const Arena & );
         friend StreamBase & operator>>( StreamBase &, Arena & );
 
@@ -161,9 +169,11 @@ namespace Battle
 
         s32 GetFreePositionNearHero( int ) const;
         std::vector<int> GetCastleTargets( void ) const;
+        TargetsInfo TargetsForChainLightning( const HeroBase * hero, int32_t attackedTroopIndex );
+        std::vector<Unit *> FindChainLightningTargetIndexes( const HeroBase * hero, Unit * firstUnit );
 
-        void ApplyActionRetreat( Command & );
-        void ApplyActionSurrender( Command & );
+        void ApplyActionRetreat( const Command & );
+        void ApplyActionSurrender( const Command & );
         void ApplyActionAttack( Command & );
         void ApplyActionMove( Command & );
         void ApplyActionEnd( Command & );
@@ -211,6 +221,11 @@ namespace Battle
             SECOND_WALL_HEX_POSITION = 29,
             THIRD_WALL_HEX_POSITION = 73,
             FORTH_WALL_HEX_POSITION = 96
+        };
+
+        enum
+        {
+            CHAIN_LIGHTNING_CREATURE_COUNT = 4
         };
     };
 

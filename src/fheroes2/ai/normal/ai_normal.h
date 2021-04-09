@@ -22,8 +22,12 @@
 #define H2AI_NORMAL_H
 
 #include "ai.h"
-#include "pairs.h"
 #include "world_pathfinding.h"
+
+namespace Battle
+{
+    class Units;
+}
 
 namespace AI
 {
@@ -37,22 +41,96 @@ namespace AI
         std::vector<IndexObject> validObjects;
     };
 
+    struct BattleTargetPair
+    {
+        int cell = -1;
+        const Battle::Unit * unit = nullptr;
+    };
+
+    struct SpellSeletion
+    {
+        int spellID = -1;
+        int32_t cell = -1;
+        double value = 0.0;
+    };
+
+    struct SpellcastOutcome
+    {
+        int32_t cell = -1;
+        double value = 0.0;
+
+        void updateOutcome( const double potentialValue, const int32_t targetCell, const bool isMassEffect = false )
+        {
+            if ( isMassEffect ) {
+                value += potentialValue;
+            }
+            else if ( potentialValue > value ) {
+                value = potentialValue;
+                cell = targetCell;
+            }
+        }
+    };
+
+    class BattlePlanner
+    {
+    public:
+        Battle::Actions planUnitTurn( Battle::Arena & arena, const Battle::Unit & currentUnit );
+        void analyzeBattleState( Battle::Arena & arena, const Battle::Unit & currentUnit );
+
+        // decision-making helpers
+        bool isUnitFaster( const Battle::Unit & currentUnit, const Battle::Unit & target ) const;
+        bool isHeroWorthSaving( const Heroes & hero ) const;
+        bool isCommanderCanSpellcast( const Battle::Arena & arena, const HeroBase * commander ) const;
+        bool checkRetreatCondition( const Heroes & hero ) const;
+
+    private:
+        // to be exposed later once every BattlePlanner will be re-initialized at combat start
+        Battle::Actions berserkTurn( Battle::Arena & arena, const Battle::Unit & currentUnit );
+        Battle::Actions archerDecision( Battle::Arena & arena, const Battle::Unit & currentUnit );
+        BattleTargetPair meleeUnitOffense( Battle::Arena & arena, const Battle::Unit & currentUnit );
+        BattleTargetPair meleeUnitDefense( Battle::Arena & arena, const Battle::Unit & currentUnit );
+        SpellSeletion selectBestSpell( Battle::Arena & arena, bool retreating ) const;
+        SpellcastOutcome spellDamageValue( const Spell & spell, Battle::Arena & arena, const Battle::Units & friendly, const Battle::Units & enemies,
+                                           bool retreating ) const;
+        SpellcastOutcome spellDispellValue( const Spell & spell, const Battle::Units & friendly, const Battle::Units & enemies ) const;
+        SpellcastOutcome spellResurrectValue( const Spell & spell, Battle::Arena & arena ) const;
+        SpellcastOutcome spellSummonValue( const Spell & spell ) const;
+        SpellcastOutcome spellEffectValue( const Spell & spell, const Battle::Units & targets ) const;
+        double spellEffectValue( const Spell & spell, const Battle::Unit & target, bool targetIsLast, bool forDispell ) const;
+
+        // turn variables that wouldn't persist
+        const HeroBase * _commander = nullptr;
+        int _myColor = Color::NONE;
+        double _myArmyStrength = 0;
+        double _enemyArmyStrength = 0;
+        double _myShooterStr = 0;
+        double _enemyShooterStr = 0;
+        double _enemyAverageSpeed = 0;
+        double _enemySpellStrength = 0;
+        int _highestDamageExpected = 0;
+        bool _attackingCastle = false;
+        bool _defendingCastle = false;
+        bool _considerRetreat = false;
+        bool _defensiveTactics = false;
+    };
+
     class Normal : public Base
     {
     public:
         Normal();
-        void KingdomTurn( Kingdom & kingdom );
-        void CastleTurn( Castle & castle, bool defensive = false );
-        void BattleTurn( Battle::Arena & arena, const Battle::Unit & currentUnit, Battle::Actions & actions );
-        void HeroTurn( Heroes & hero );
+        virtual void KingdomTurn( Kingdom & kingdom ) override;
+        virtual void CastleTurn( Castle & castle, bool defensive = false ) override;
+        virtual void BattleTurn( Battle::Arena & arena, const Battle::Unit & currentUnit, Battle::Actions & actions ) override;
+        virtual void HeroesTurn( VecHeroes & heroes ) override;
 
-        void revealFog( const Maps::Tiles & tile );
+        virtual void revealFog( const Maps::Tiles & tile ) override;
 
-        void HeroesActionComplete( Heroes & hero );
+        virtual void HeroesPreBattle( HeroBase & hero, bool isAttacking ) override;
+        virtual void HeroesActionComplete( Heroes & hero ) override;
 
         double getObjectValue( const Heroes & hero, int index, int objectID, double valueToIgnore ) const;
-        int getPriorityTarget( const Heroes & hero, int patrolIndex = -1, uint32_t distanceLimit = 0 );
-        void resetPathfinder();
+        int getPriorityTarget( const Heroes & hero, double & maxPriority, int patrolIndex = -1, uint32_t distanceLimit = 0 );
+        virtual void resetPathfinder() override;
 
     private:
         // following data won't be saved/serialized
@@ -60,6 +138,7 @@ namespace AI
         std::vector<IndexObject> _mapObjects;
         std::vector<RegionStats> _regions;
         AIWorldPathfinder _pathfinder;
+        BattlePlanner _battlePlanner;
     };
 }
 

@@ -41,6 +41,19 @@ namespace Battle
     class Only;
 }
 
+namespace Interface
+{
+    class GameArea;
+}
+
+struct HeroSeedsForLevelUp
+{
+    uint32_t seedPrimarySkill = 0;
+    uint32_t seedSecondaySkill1 = 0;
+    uint32_t seedSecondaySkill2 = 0;
+    uint32_t seedSecondaySkillRandomChoose = 0;
+};
+
 class Heroes : public HeroBase, public ColorBase
 {
 public:
@@ -126,11 +139,11 @@ public:
         MARTINE,
         JARKONAS,
         // debugger
-        SANDYSANDY,
+        DEBUG_HERO,
         UNKNOWN
     };
 
-    static fheroes2::Image GetPortrait( int heroid, int type );
+    static const fheroes2::Sprite & GetPortrait( int heroid, int type );
     static const char * GetName( int heroid );
 
     enum flags_t
@@ -152,33 +165,45 @@ public:
         VISIONS = 0x00004000,
         PATROL = 0x00008000,
         CUSTOMARMY = 0x00010000,
-        CUSTOMSKILLS = 0x00020000
+        CUSTOMSKILLS = 0x00020000,
+        SKIPPED_TURN = 0x00040000,
+        WAITING = 0x00080000,
+        MOVED = 0x00100000
+    };
+
+    // Values are set by BitModes; shared with previous enum
+    enum class Role
+    {
+        SCOUT = 0x01000000,
+        HUNTER = 0x02000000,
+        COURIER = 0x04000000,
+        CHAMPION = 0x08000000
     };
 
     Heroes();
     Heroes( int heroid, int rc );
 
-    bool isValid( void ) const;
+    virtual bool isValid() const override;
     bool isFreeman( void ) const;
     void SetFreeman( int reason );
 
-    const Castle * inCastle( void ) const;
-    Castle * inCastle( void );
+    virtual const Castle * inCastle() const override;
+    Castle * inCastle();
 
     void LoadFromMP2( s32 map_index, int cl, int rc, StreamBuf );
     void PostLoad( void );
 
-    int GetRace( void ) const;
-    const std::string & GetName( void ) const;
-    int GetColor( void ) const;
-    int GetType( void ) const;
-    int GetControl( void ) const;
+    virtual int GetRace() const override;
+    virtual const std::string & GetName() const override;
+    virtual int GetColor() const override;
+    virtual int GetType() const override;
+    virtual int GetControl() const override;
 
     int GetKillerColor( void ) const;
     void SetKillerColor( int );
 
-    const Army & GetArmy( void ) const;
-    Army & GetArmy( void );
+    virtual const Army & GetArmy() const override;
+    virtual Army & GetArmy() override;
 
     int GetID( void ) const;
 
@@ -186,10 +211,10 @@ public:
     double getRecruitValue() const;
     int getStatsValue() const;
 
-    int GetAttack( void ) const;
-    int GetDefense( void ) const;
-    int GetPower( void ) const;
-    int GetKnowledge( void ) const;
+    virtual int GetAttack() const override;
+    virtual int GetDefense() const override;
+    virtual int GetPower() const override;
+    virtual int GetKnowledge() const override;
 
     int GetAttack( std::string * ) const;
     int GetDefense( std::string * ) const;
@@ -198,8 +223,8 @@ public:
 
     void IncreasePrimarySkill( int skill );
 
-    int GetMorale( void ) const;
-    int GetLuck( void ) const;
+    virtual int GetMorale() const override;
+    virtual int GetLuck() const override;
     int GetMoraleWithModificators( std::string * str = NULL ) const;
     int GetLuckWithModificators( std::string * str = NULL ) const;
     int GetLevel( void ) const;
@@ -211,8 +236,8 @@ public:
     void SetCenterPatrol( const Point & );
     int GetSquarePatrol( void ) const;
 
-    u32 GetMaxSpellPoints( void ) const;
-    u32 GetMaxMovePoints( void ) const;
+    virtual u32 GetMaxSpellPoints() const override;
+    u32 GetMaxMovePoints() const;
 
     u32 GetMovePoints( void ) const;
     void IncreaseMovePoints( u32 );
@@ -223,8 +248,8 @@ public:
 
     bool HasSecondarySkill( int ) const;
     bool HasMaxSecondarySkill( void ) const;
-    int GetLevelSkill( int ) const;
-    u32 GetSecondaryValues( int ) const;
+    virtual int GetLevelSkill( int ) const override;
+    virtual u32 GetSecondaryValues( int ) const override;
     void LearnSkill( const Skill::Secondary & );
     Skill::SecSkills & GetSecondarySkills( void );
 
@@ -245,8 +270,8 @@ public:
     void ActionNewDay( void );
     void ActionNewWeek( void );
     void ActionNewMonth( void );
-    void ActionAfterBattle( void );
-    void ActionPreBattle( void );
+    virtual void ActionAfterBattle() override;
+    virtual void ActionPreBattle() override;
 
     bool BuySpellBook( const Castle *, int shrine = 0 );
 
@@ -268,19 +293,22 @@ public:
     void markHeroMeeting( int heroID );
 
     bool Move( bool fast = false );
-    void Move2Dest( const s32 & destination );
+    void Move2Dest( const int32_t destination );
     bool isMoveEnabled( void ) const;
     bool CanMove( void ) const;
     void SetMove( bool );
     bool isAction( void ) const;
     void ResetAction( void );
-    void Action( s32 );
+    void Action( int tileIndex, bool isDestination );
     void ActionNewPosition( void );
     void ApplyPenaltyMovement( uint32_t penalty );
     bool ActionSpellCast( const Spell & );
 
-    void Redraw( fheroes2::Image &, s32, s32, bool ) const;
-    void PortraitRedraw( s32, s32, int type, fheroes2::Image & ) const;
+    bool MayCastAdventureSpells() const;
+
+    void Redraw( fheroes2::Image & dst, int32_t dx, int32_t dy, const Rect & visibleTileROI, const Interface::GameArea & gamearea ) const;
+    void RedrawShadow( fheroes2::Image & dst, int32_t dx, int32_t dy, const Rect & visibleTileROI, const Interface::GameArea & gamearea ) const;
+    virtual void PortraitRedraw( s32 px, s32 py, PortraitType type, fheroes2::Image & dstsf ) const override;
     int GetSpriteIndex( void ) const;
 
     // These 2 methods must be used only for hero's animation. Please never use them anywhere else!
@@ -291,7 +319,6 @@ public:
     void FadeIn( const Point & offset = Point() ) const;
     void Scoute( void ) const;
     int GetScoute( void ) const;
-    int CanScouteTile( s32 ) const;
     u32 GetVisionsDistance( void ) const;
 
     bool isShipMaster( void ) const;
@@ -305,7 +332,7 @@ public:
     bool AllowBattle( bool attacker ) const;
 
     std::string String( void ) const;
-    fheroes2::Image GetPortrait( int type ) const;
+    const fheroes2::Sprite & GetPortrait( int type ) const;
 
     static int GetLevelFromExperience( u32 );
     static u32 GetExperienceFromLevel( int );
@@ -323,18 +350,21 @@ private:
     friend class Recruits;
     friend class Battle::Only;
 
+    HeroSeedsForLevelUp GetSeedsForLevelUp() const;
     void LevelUp( bool skipsecondary, bool autoselect = false );
-    int LevelUpPrimarySkill( void );
-    void LevelUpSecondarySkill( int, bool autoselect = false );
+    void LevelUpSecondarySkill( const HeroSeedsForLevelUp & seeds, int primary, bool autoselect = false );
     void AngleStep( int );
     bool MoveStep( bool fast = false );
     static void MoveStep( Heroes &, s32 to, bool newpos );
     static uint32_t GetStartingXp();
+    bool isInVisibleMapArea() const;
 
     // This function is useful only in a situation when AI hero moves out of the fog
     // we don't update his direction during movement under the fog so there is a situation
     // when initial hero's sprite is set incorrectly. This function fixes it
     void SetValidDirectionSprite();
+
+    uint32_t UpdateMovementPoints( const uint32_t movePoints, const int skill ) const;
 
     enum
     {
@@ -365,7 +395,6 @@ private:
     int patrol_square;
 
     std::list<IndexObject> visit_object;
-    // persist this value later
     uint32_t _lastGroundRegion = 0;
 
     mutable int _alphaValue;

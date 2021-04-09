@@ -21,14 +21,12 @@
  ***************************************************************************/
 
 #include "cursor.h"
-#include "agg.h"
+#include "agg_image.h"
+#include "icn.h"
+#include "localevent.h"
 
 // This is new Graphics engine. To change the code slowly we have to do some hacks here for now
 #include "screen.h"
-
-#if SDL_VERSION_ATLEAST( 2, 0, 0 )
-#define USE_SDL_CURSOR
-#endif
 
 Cursor::Cursor()
     : theme( NONE )
@@ -46,8 +44,7 @@ Cursor & Cursor::Get( void )
     return _cursor;
 }
 
-/* get theme cursor */
-int Cursor::Themes( void )
+int Cursor::Themes() const
 {
     return SP_ARROW >= theme ? theme : NONE;
 }
@@ -83,23 +80,17 @@ bool Cursor::SetThemes( int name, bool force )
 }
 
 /* redraw cursor wrapper for local event */
-void Cursor::Redraw( s32 x, s32 y )
+void Cursor::Redraw( int32_t x, int32_t y )
 {
-#if !defined( USE_SDL_CURSOR )
-    Cursor & cur = Cursor::Get();
-    cur.Move( x, y );
-
-    if ( fheroes2::cursor().isVisible() ) {
-        fheroes2::Display::instance().render();
+    if ( fheroes2::cursor().isSoftwareEmulation() ) {
+        Cursor::Get().Move( x, y );
+        if ( fheroes2::cursor().isVisible() ) {
+            fheroes2::Display::instance().render();
+        }
     }
-#else
-    (void)x;
-    (void)y;
-#endif
 }
 
-/* move cursor */
-void Cursor::Move( s32 x, s32 y )
+void Cursor::Move( int32_t x, int32_t y ) const
 {
     fheroes2::cursor().setPosition( x + offset_x, y + offset_y );
 }
@@ -169,12 +160,12 @@ void Cursor::SetOffset( int name, const fheroes2::Point & defaultOffset )
     }
 }
 
-void Cursor::Show( void )
+void Cursor::Show() const
 {
     fheroes2::cursor().show( true );
 }
 
-void Cursor::Hide( void )
+void Cursor::Hide() const
 {
     fheroes2::cursor().show( false );
 }
@@ -182,6 +173,11 @@ void Cursor::Hide( void )
 bool Cursor::isVisible( void ) const
 {
     return fheroes2::cursor().isVisible();
+}
+
+void Cursor::Refresh()
+{
+    Get().SetThemes( Get().Themes(), true );
 }
 
 int Cursor::DistanceThemes( int theme, u32 dist )

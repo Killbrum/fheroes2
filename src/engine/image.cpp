@@ -21,6 +21,7 @@
 #include "image.h"
 #include "palette_h2.h"
 
+#include <cassert>
 #include <cmath>
 #include <cstring>
 
@@ -202,22 +203,54 @@ namespace
         if ( image.empty() || width <= 0 || height <= 0 ) // what's the reason to work with empty images?
             return false;
 
-        if ( x < 0 || y < 0 || x > image.width() || y > image.height() )
+        if ( x < 0 || y < 0 || x + width > image.width() || y + height > image.height() )
             return false;
 
         return true;
     }
 
-    bool Validate( const fheroes2::Image & in, int32_t inX, int32_t inY, const fheroes2::Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height )
+    bool Verify( const fheroes2::Image & image, int32_t & x, int32_t & y, int32_t & width, int32_t & height )
     {
-        if ( in.empty() || out.empty() || width <= 0 || height <= 0 ) // what's the reason to work with empty images?
+        if ( image.empty() || width <= 0 || height <= 0 ) // what's the reason to work with empty images?
             return false;
 
-        if ( inX < 0 || inY < 0 || outX < 0 || outY < 0 || inX > in.width() || inY > in.height() || outX > out.width() || outY > out.height() )
+        const int32_t widthOut = image.width();
+        const int32_t heightOut = image.height();
+
+        if ( x < 0 ) {
+            const int32_t offsetX = -x;
+            if ( offsetX >= width )
+                return false;
+
+            x = 0;
+            width -= offsetX;
+        }
+
+        if ( y < 0 ) {
+            const int32_t offsetY = -y;
+            if ( offsetY >= height )
+                return false;
+
+            y = 0;
+            height -= offsetY;
+        }
+
+        if ( x > widthOut || y > heightOut )
             return false;
 
-        if ( ( inX + width > in.width() ) || ( inY + height > in.height() ) || ( outX + width > out.width() ) || ( outY + height > out.height() ) )
-            return false;
+        if ( x + width > widthOut ) {
+            const int32_t offsetX = x + width - widthOut;
+            if ( offsetX >= width )
+                return false;
+            width -= offsetX;
+        }
+
+        if ( y + height > heightOut ) {
+            const int32_t offsetY = y + height - heightOut;
+            if ( offsetY >= height )
+                return false;
+            height -= offsetY;
+        }
 
         return true;
     }
@@ -314,9 +347,12 @@ namespace
                 for ( uint32_t i = 0; i < 256; ++i, ++correctorX ) {
                     const uint8_t * palette = kb_pal + *correctorX * 3;
 
-                    const int32_t offsetRed = static_cast<int32_t>( *( palette++ ) ) - static_cast<int32_t>( r );
-                    const int32_t offsetGreen = static_cast<int32_t>( *( palette++ ) ) - static_cast<int32_t>( g );
-                    const int32_t offsetBlue = static_cast<int32_t>( *( palette++ ) ) - static_cast<int32_t>( b );
+                    const int32_t offsetRed = static_cast<int32_t>( *( palette ) ) - static_cast<int32_t>( r );
+                    ++palette;
+                    const int32_t offsetGreen = static_cast<int32_t>( *( palette ) ) - static_cast<int32_t>( g );
+                    ++palette;
+                    const int32_t offsetBlue = static_cast<int32_t>( *( palette ) ) - static_cast<int32_t>( b );
+                    ++palette;
                     const int32_t distance = offsetRed * offsetRed + offsetGreen * offsetGreen + offsetBlue * offsetBlue;
                     if ( minDistance > distance ) {
                         minDistance = distance;
@@ -357,6 +393,8 @@ namespace fheroes2
     Image::Image( int32_t width_, int32_t height_ )
         : _width( 0 )
         , _height( 0 )
+        , _data( nullptr )
+        , _singleLayer( false )
     {
         resize( width_, height_ );
     }
@@ -364,6 +402,8 @@ namespace fheroes2
     Image::Image( const Image & image_ )
         : _width( 0 )
         , _height( 0 )
+        , _data( nullptr )
+        , _singleLayer( false )
     {
         resize( image_.width(), image_.height() );
 
@@ -376,6 +416,8 @@ namespace fheroes2
     Image::Image( Image && image_ )
         : _width( 0 )
         , _height( 0 )
+        , _data( nullptr )
+        , _singleLayer( false )
     {
         swap( image_ );
     }
@@ -387,10 +429,24 @@ namespace fheroes2
 
     Image & Image::operator=( const Image & image_ )
     {
-        _width = image_.width();
-        _height = image_.height();
-        _image = image_._image;
-        _transform = image_._transform;
+        // We shouldn't copy different types of images.
+        assert( _singleLayer == image_._singleLayer );
+
+        // resize if needed
+        if ( image_._width != _width || image_._height != _height ) {
+            _width = image_.width();
+            _height = image_.height();
+
+            delete[] _data;
+            if ( image_._data != nullptr ) {
+                _data = new uint8_t[static_cast<size_t>( _width * _height * 2 )];
+            }
+        }
+
+        if ( image_._data != nullptr ) {
+            memcpy( _data, image_._data, static_cast<size_t>( _width * _height * 2 ) );
+        }
+
         return *this;
     }
 
@@ -402,28 +458,28 @@ namespace fheroes2
 
     uint8_t * Image::image()
     {
-        return _image.data();
+        return _data;
     }
 
     const uint8_t * Image::image() const
     {
-        return _image.data();
+        return _data;
     }
 
     uint8_t * Image::transform()
     {
-        return _transform.data();
+        return _data + _width * _height;
     }
 
     const uint8_t * Image::transform() const
     {
-        return _transform.data();
+        return _data + _width * _height;
     }
 
     void Image::clear()
     {
-        _image.clear();
-        _transform.clear();
+        delete[] _data;
+        _data = nullptr;
 
         _width = 0;
         _height = 0;
@@ -438,11 +494,6 @@ namespace fheroes2
         }
     }
 
-    bool Image::empty() const
-    {
-        return _image.empty();
-    }
-
     void Image::resize( int32_t width_, int32_t height_ )
     {
         if ( width_ <= 0 || height_ <= 0 || ( width_ == _width && height_ == _height ) ) // nothing to resize
@@ -454,25 +505,27 @@ namespace fheroes2
         _height = height_;
 
         const size_t totalSize = static_cast<size_t>( _width * _height );
-        _image.resize( totalSize );
-        _transform.resize( totalSize );
+        _data = new uint8_t[totalSize * 2];
     }
 
     void Image::reset()
     {
         if ( !empty() ) {
-            std::fill( _image.begin(), _image.end(), 0 );
-            std::fill( _transform.begin(), _transform.end(), 1 ); // skip all data
+            const size_t totalSize = static_cast<size_t>( _width * _height );
+            std::fill( image(), image() + totalSize, 0 );
+            std::fill( transform(), transform() + totalSize, 1 ); // skip all data
         }
     }
 
     void Image::swap( Image & image )
     {
+        // We shouldn't swap different types of images.
+        assert( _singleLayer == image._singleLayer );
+
         std::swap( _width, image._width );
         std::swap( _height, image._height );
 
-        std::swap( _image, image._image );
-        std::swap( _transform, image._transform );
+        std::swap( _data, image._data );
     }
 
     Sprite::Sprite( int32_t width_, int32_t height_, int32_t x_, int32_t y_ )
@@ -494,11 +547,12 @@ namespace fheroes2
     {}
 
     Sprite::Sprite( Sprite && image )
+        : Image()
+        , _x( 0 )
+        , _y( 0 )
     {
         swap( image );
     }
-
-    Sprite::~Sprite() {}
 
     Sprite & Sprite::operator=( const Sprite & image )
     {
@@ -573,30 +627,15 @@ namespace fheroes2
         Copy( _image, _x, _y, _copy, 0, 0, _width, _height );
     }
 
-    int32_t ImageRestorer::x() const
-    {
-        return _x;
-    }
-
-    int32_t ImageRestorer::y() const
-    {
-        return _y;
-    }
-
-    int32_t ImageRestorer::width() const
-    {
-        return _width;
-    }
-
-    int32_t ImageRestorer::height() const
-    {
-        return _height;
-    }
-
     void ImageRestorer::restore()
     {
         _isRestored = true;
         Copy( _copy, 0, 0, _image, _x, _y, _width, _height );
+    }
+
+    void ImageRestorer::reset()
+    {
+        _isRestored = true;
     }
 
     void ImageRestorer::_updateRoi()
@@ -807,13 +846,53 @@ namespace fheroes2
         const uint8_t * value = kb_pal;
 
         for ( uint32_t i = 0; i < 256; ++i ) {
-            const uint32_t red = static_cast<uint32_t>( *value++ ) * alpha / 255;
-            const uint32_t green = static_cast<uint32_t>( *value++ ) * alpha / 255;
-            const uint32_t blue = static_cast<uint32_t>( *value++ ) * alpha / 255;
+            const uint32_t red = static_cast<uint32_t>( *value ) * alpha / 255;
+            ++value;
+            const uint32_t green = static_cast<uint32_t>( *value ) * alpha / 255;
+            ++value;
+            const uint32_t blue = static_cast<uint32_t>( *value ) * alpha / 255;
+            ++value;
             palette[i] = GetPALColorId( static_cast<uint8_t>( red ), static_cast<uint8_t>( green ), static_cast<uint8_t>( blue ) );
         }
 
         ApplyPalette( in, out, palette );
+    }
+
+    void ApplyTransform( Image & image, int32_t x, int32_t y, int32_t width, int32_t height, uint8_t transformId )
+    {
+        if ( !Verify( image, x, y, width, height ) )
+            return;
+
+        const int32_t imageWidth = image.width();
+
+        uint8_t * imageY = image.image() + y * imageWidth + x;
+        const uint8_t * imageYEnd = imageY + height * imageWidth;
+
+        if ( image.singleLayer() ) {
+            for ( ; imageY != imageYEnd; imageY += imageWidth ) {
+                uint8_t * imageX = imageY;
+                const uint8_t * imageXEnd = imageX + width;
+
+                for ( ; imageX != imageXEnd; ++imageX ) {
+                    *imageX = *( transformTable + transformId * 256 + *imageX );
+                }
+            }
+        }
+        else {
+            const uint8_t * transformY = image.transform() + y * imageWidth + x;
+
+            for ( ; imageY != imageYEnd; imageY += imageWidth, transformY += imageWidth ) {
+                uint8_t * imageX = imageY;
+                const uint8_t * transformX = transformY;
+                const uint8_t * imageXEnd = imageX + width;
+
+                for ( ; imageX != imageXEnd; ++imageX, ++transformX ) {
+                    if ( *transformX == 0 ) {
+                        *imageX = *( transformTable + transformId * 256 + *imageX );
+                    }
+                }
+            }
+        }
     }
 
     void Blit( const Image & in, Image & out, bool flip )
@@ -832,6 +911,11 @@ namespace fheroes2
             return;
         }
 
+        if ( in.singleLayer() && out.singleLayer() && !flip ) {
+            Copy( in, inX, inY, out, outX, outY, width, height );
+            return;
+        }
+
         const int32_t widthIn = in.width();
         const int32_t widthOut = out.width();
 
@@ -842,28 +926,49 @@ namespace fheroes2
 
             const int32_t offsetOutY = outY * widthOut + outX;
             uint8_t * imageOutY = out.image() + offsetOutY;
-            uint8_t * transformOutY = out.transform() + offsetOutY;
-
             const uint8_t * imageOutYEnd = imageOutY + height * widthOut;
 
-            for ( ; imageOutY != imageOutYEnd; imageInY += widthIn, transformInY += widthIn, imageOutY += widthOut, transformOutY += widthOut ) {
-                const uint8_t * imageInX = imageInY;
-                const uint8_t * transformInX = transformInY;
-                uint8_t * imageOutX = imageOutY;
-                uint8_t * transformOutX = transformOutY;
-                const uint8_t * imageOutXEnd = imageOutX + width;
+            if ( out.singleLayer() ) {
+                for ( ; imageOutY != imageOutYEnd; imageInY += widthIn, transformInY += widthIn, imageOutY += widthOut ) {
+                    const uint8_t * imageInX = imageInY;
+                    const uint8_t * transformInX = transformInY;
+                    uint8_t * imageOutX = imageOutY;
+                    const uint8_t * imageOutXEnd = imageOutX + width;
 
-                for ( ; imageOutX != imageOutXEnd; --imageInX, --transformInX, ++imageOutX, ++transformOutX ) {
-                    if ( *transformInX == 1 ) { // skip pixel
-                        continue;
+                    for ( ; imageOutX != imageOutXEnd; --imageInX, --transformInX, ++imageOutX ) {
+                        if ( *transformInX > 0 ) { // apply a transformation
+                            if ( *transformInX != 1 ) { // skip pixel
+                                *imageOutX = *( transformTable + ( *transformInX ) * 256 + *imageOutX );
+                            }
+                        }
+                        else { // copy a pixel
+                            *imageOutX = *imageInX;
+                        }
                     }
+                }
+            }
+            else {
+                uint8_t * transformOutY = out.transform() + offsetOutY;
 
-                    if ( *transformInX > 0 && *transformOutX == 0 ) { // apply a transformation
-                        *imageOutX = *( transformTable + ( *transformInX ) * 256 + *imageOutX );
-                    }
-                    else { // copy a pixel
-                        *transformOutX = *transformInX;
-                        *imageOutX = *imageInX;
+                for ( ; imageOutY != imageOutYEnd; imageInY += widthIn, transformInY += widthIn, imageOutY += widthOut, transformOutY += widthOut ) {
+                    const uint8_t * imageInX = imageInY;
+                    const uint8_t * transformInX = transformInY;
+                    uint8_t * imageOutX = imageOutY;
+                    uint8_t * transformOutX = transformOutY;
+                    const uint8_t * imageOutXEnd = imageOutX + width;
+
+                    for ( ; imageOutX != imageOutXEnd; --imageInX, --transformInX, ++imageOutX, ++transformOutX ) {
+                        if ( *transformInX == 1 ) { // skip pixel
+                            continue;
+                        }
+
+                        if ( *transformInX > 0 && *transformOutX == 0 ) { // apply a transformation
+                            *imageOutX = *( transformTable + ( *transformInX ) * 256 + *imageOutX );
+                        }
+                        else { // copy a pixel
+                            *transformOutX = *transformInX;
+                            *imageOutX = *imageInX;
+                        }
                     }
                 }
             }
@@ -875,27 +980,49 @@ namespace fheroes2
 
             const int32_t offsetOutY = outY * widthOut + outX;
             uint8_t * imageOutY = out.image() + offsetOutY;
-            uint8_t * transformOutY = out.transform() + offsetOutY;
             const uint8_t * imageInYEnd = imageInY + height * widthIn;
 
-            for ( ; imageInY != imageInYEnd; imageInY += widthIn, transformInY += widthIn, imageOutY += widthOut, transformOutY += widthOut ) {
-                const uint8_t * imageInX = imageInY;
-                const uint8_t * transformInX = transformInY;
-                uint8_t * imageOutX = imageOutY;
-                uint8_t * transformOutX = transformOutY;
-                const uint8_t * imageInXEnd = imageInX + width;
+            if ( out.singleLayer() ) {
+                for ( ; imageInY != imageInYEnd; imageInY += widthIn, transformInY += widthIn, imageOutY += widthOut ) {
+                    const uint8_t * imageInX = imageInY;
+                    const uint8_t * transformInX = transformInY;
+                    uint8_t * imageOutX = imageOutY;
+                    const uint8_t * imageInXEnd = imageInX + width;
 
-                for ( ; imageInX != imageInXEnd; ++imageInX, ++transformInX, ++imageOutX, ++transformOutX ) {
-                    if ( *transformInX == 1 ) { // skip pixel
-                        continue;
+                    for ( ; imageInX != imageInXEnd; ++imageInX, ++transformInX, ++imageOutX ) {
+                        if ( *transformInX > 0 ) { // apply a transformation
+                            if ( *transformInX != 1 ) { // skip pixel
+                                *imageOutX = *( transformTable + ( *transformInX ) * 256 + *imageOutX );
+                            }
+                        }
+                        else { // copy a pixel
+                            *imageOutX = *imageInX;
+                        }
                     }
+                }
+            }
+            else {
+                uint8_t * transformOutY = out.transform() + offsetOutY;
 
-                    if ( *transformInX > 0 && *transformOutX == 0 ) { // apply a transformation
-                        *imageOutX = *( transformTable + ( *transformInX ) * 256 + *imageOutX );
-                    }
-                    else { // copy a pixel
-                        *transformOutX = *transformInX;
-                        *imageOutX = *imageInX;
+                for ( ; imageInY != imageInYEnd; imageInY += widthIn, transformInY += widthIn, imageOutY += widthOut, transformOutY += widthOut ) {
+                    const uint8_t * imageInX = imageInY;
+                    const uint8_t * transformInX = transformInY;
+                    uint8_t * imageOutX = imageOutY;
+                    uint8_t * transformOutX = transformOutY;
+                    const uint8_t * imageInXEnd = imageInX + width;
+
+                    for ( ; imageInX != imageInXEnd; ++imageInX, ++transformInX, ++imageOutX, ++transformOutX ) {
+                        if ( *transformInX == 1 ) { // skip pixel
+                            continue;
+                        }
+
+                        if ( *transformInX > 0 && *transformOutX == 0 ) { // apply a transformation
+                            *imageOutX = *( transformTable + ( *transformInX ) * 256 + *imageOutX );
+                        }
+                        else { // copy a pixel
+                            *transformOutX = *transformInX;
+                            *imageOutX = *imageInX;
+                        }
                     }
                 }
             }
@@ -918,7 +1045,7 @@ namespace fheroes2
 
     void Copy( const Image & in, int32_t inX, int32_t inY, Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height )
     {
-        if ( !Validate( in, inX, inY, out, outX, outY, width, height ) ) {
+        if ( !Verify( in, inX, inY, out, outX, outY, width, height ) ) {
             return;
         }
 
@@ -927,16 +1054,24 @@ namespace fheroes2
 
         const int32_t offsetInY = inY * widthIn + inX;
         const uint8_t * imageInY = in.image() + offsetInY;
-        const uint8_t * transformInY = in.transform() + offsetInY;
 
         const int32_t offsetOutY = outY * widthOut + outX;
         uint8_t * imageOutY = out.image() + offsetOutY;
-        uint8_t * transformOutY = out.transform() + offsetOutY;
         const uint8_t * imageInYEnd = imageInY + height * widthIn;
 
-        for ( ; imageInY != imageInYEnd; imageInY += widthIn, transformInY += widthIn, imageOutY += widthOut, transformOutY += widthOut ) {
-            memcpy( imageOutY, imageInY, static_cast<size_t>( width ) );
-            memcpy( transformOutY, transformInY, static_cast<size_t>( width ) );
+        if ( out.singleLayer() ) {
+            for ( ; imageInY != imageInYEnd; imageInY += widthIn, imageOutY += widthOut ) {
+                memcpy( imageOutY, imageInY, static_cast<size_t>( width ) );
+            }
+        }
+        else {
+            const uint8_t * transformInY = in.transform() + offsetInY;
+            uint8_t * transformOutY = out.transform() + offsetOutY;
+
+            for ( ; imageInY != imageInYEnd; imageInY += widthIn, transformInY += widthIn, imageOutY += widthOut, transformOutY += widthOut ) {
+                memcpy( imageOutY, imageInY, static_cast<size_t>( width ) );
+                memcpy( transformOutY, transformInY, static_cast<size_t>( width ) );
+            }
         }
     }
 
@@ -998,9 +1133,12 @@ namespace fheroes2
                     for ( ; imageInX != imageInXEnd; ++imageInX ) {
                         const uint8_t * palette = kb_pal + *imageInX * 3;
 
-                        sumRed += ( *palette++ );
-                        sumGreen += ( *palette++ );
-                        sumBlue += ( *palette++ );
+                        sumRed += ( *palette );
+                        ++palette;
+                        sumGreen += ( *palette );
+                        ++palette;
+                        sumBlue += ( *palette );
+                        ++palette;
                     }
                 }
 
@@ -1014,12 +1152,12 @@ namespace fheroes2
         return out;
     }
 
-    Image CreateContour( const Image & image, uint8_t value )
+    Sprite CreateContour( const Image & image, uint8_t value )
     {
         const int32_t width = image.width();
         const int32_t height = image.height();
 
-        Image contour( width, height );
+        Sprite contour( width, height );
         contour.reset();
         if ( width < 2 || height < 2 ) {
             return contour;
@@ -1294,7 +1432,7 @@ namespace fheroes2
 
     void Fill( Image & image, int32_t x, int32_t y, int32_t width, int32_t height, uint8_t colorId )
     {
-        if ( !Validate( image, x, y, width, height ) )
+        if ( !Verify( image, x, y, width, height ) )
             return;
 
         if ( image.width() == width && image.height() == height ) { // we need to fill whole image
@@ -1354,7 +1492,7 @@ namespace fheroes2
 
         if ( horizontally && !vertically ) {
             const uint8_t * imageInY = in.image() + width - 1;
-            const uint8_t * transformInY = out.transform() + width - 1;
+            const uint8_t * transformInY = in.transform() + width - 1;
             for ( ; imageOutY != imageOutYEnd; imageOutY += width, transformOutY += width, imageInY += width, transformInY += width ) {
                 uint8_t * imageOutX = imageOutY;
                 uint8_t * transformOutX = transformOutY;
@@ -1369,16 +1507,18 @@ namespace fheroes2
             }
         }
         else if ( !horizontally && vertically ) {
-            const uint8_t * imageInY = in.image() + ( height - 1 ) * width;
-            const uint8_t * transformInY = out.transform() + ( height - 1 ) * width;
+            const int32_t offsetIn = ( height - 1 ) * width;
+            const uint8_t * imageInY = in.image() + offsetIn;
+            const uint8_t * transformInY = in.transform() + offsetIn;
             for ( ; imageOutY != imageOutYEnd; imageOutY += width, transformOutY += width, imageInY -= width, transformInY -= width ) {
                 memcpy( imageOutY, imageInY, static_cast<size_t>( width ) );
                 memcpy( transformOutY, transformInY, static_cast<size_t>( width ) );
             }
         }
         else {
-            const uint8_t * imageInY = in.image() + ( height - 1 ) * width + width - 1;
-            const uint8_t * transformInY = out.transform() + ( height - 1 ) * width + width - 1;
+            const int32_t offsetIn = ( height - 1 ) * width + width - 1;
+            const uint8_t * imageInY = in.image() + offsetIn;
+            const uint8_t * transformInY = in.transform() + offsetIn;
             for ( ; imageOutY != imageOutYEnd; imageOutY += width, transformOutY += width, imageInY -= width, transformInY -= width ) {
                 uint8_t * imageOutX = imageOutY;
                 uint8_t * transformOutX = transformOutY;
@@ -1434,104 +1574,176 @@ namespace fheroes2
         }
     }
 
-    void Resize( const Image & in, Image & out, bool isSubpixelAccuracy )
+    void Resize( const Image & in, Image & out, const bool isSubpixelAccuracy )
     {
         if ( in.empty() || out.empty() ) {
             return;
         }
 
-        if ( IsEqual( in, out ) ) {
-            Copy( in, out );
+        Resize( in, 0, 0, in.width(), in.height(), out, 0, 0, out.width(), out.height(), isSubpixelAccuracy );
+    }
+
+    void Resize( const Image & in, const int32_t inX, const int32_t inY, const int32_t widthRoiIn, const int32_t heightRoiIn, Image & out, const int32_t outX,
+                 const int32_t outY, const int32_t widthRoiOut, const int32_t heightRoiOut, const bool isSubpixelAccuracy )
+    {
+        if ( !Validate( in, inX, inY, widthRoiIn, heightRoiIn ) || !Validate( out, outX, outY, widthRoiOut, heightRoiOut ) )
+            return;
+
+        if ( widthRoiIn == widthRoiOut && heightRoiIn == heightRoiOut ) {
+            Copy( in, inX, inY, out, outX, outY, widthRoiIn, heightRoiIn );
             return;
         }
 
         const int32_t widthIn = in.width();
-        const int32_t heightIn = in.height();
         const int32_t widthOut = out.width();
-        const int32_t heightOut = out.height();
 
-        const uint8_t * inY = in.image();
-        const uint8_t * transformInY = in.transform();
-        uint8_t * outY = out.image();
-        uint8_t * transformOutY = out.transform();
+        const int32_t offsetInY = inY * widthIn + inX;
+        const int32_t offsetOutY = outY * widthOut + outX;
+
+        const uint8_t * imageInY = in.image() + offsetInY;
+        uint8_t * imageOutY = out.image() + offsetOutY;
 
         if ( isSubpixelAccuracy ) {
-            std::vector<double> positionX( widthOut );
-            std::vector<double> positionY( heightOut );
-            for ( int32_t x = 0; x < widthOut; ++x )
-                positionX[x] = static_cast<double>( x * widthIn ) / widthOut;
-            for ( int32_t y = 0; y < heightOut; ++y )
-                positionY[y] = static_cast<double>( y * heightIn ) / heightOut;
+            std::vector<double> positionX( widthRoiOut );
+            std::vector<double> positionY( heightRoiOut );
+            for ( int32_t x = 0; x < widthRoiOut; ++x )
+                positionX[x] = static_cast<double>( x * widthRoiIn ) / widthRoiOut;
+            for ( int32_t y = 0; y < heightRoiOut; ++y )
+                positionY[y] = static_cast<double>( y * heightRoiIn ) / heightRoiOut;
 
-            for ( int32_t y = 0; y < heightOut; ++y, outY += widthOut, transformOutY += widthOut ) {
-                const double posY = positionY[y];
-                const int32_t startY = static_cast<int32_t>( posY );
-                const double coeffY = posY - startY;
+            if ( in.singleLayer() && out.singleLayer() ) {
+                for ( int32_t y = 0; y < heightRoiOut; ++y, imageOutY += widthOut ) {
+                    const double posY = positionY[y];
+                    const int32_t startY = static_cast<int32_t>( posY );
+                    const double coeffY = posY - startY;
 
-                uint8_t * outX = outY;
-                uint8_t * transformOutX = transformOutY;
+                    uint8_t * imageOutX = imageOutY;
 
-                for ( int32_t x = 0; x < widthOut; ++x, ++outX, ++transformOutX ) {
-                    const double posX = positionX[x];
-                    const int32_t startX = static_cast<int32_t>( posX );
-                    const int32_t offsetIn = startY * widthIn + startX;
+                    for ( int32_t x = 0; x < widthRoiOut; ++x, ++imageOutX ) {
+                        const double posX = positionX[x];
+                        const int32_t startX = static_cast<int32_t>( posX );
+                        const int32_t offsetIn = startY * widthIn + startX;
 
-                    const uint8_t * inX = inY + offsetIn;
-                    const uint8_t * transformInX = transformInY + offsetIn;
+                        const uint8_t * imageInX = imageInY + offsetIn;
 
-                    if ( posX < widthIn - 1 && posY < heightIn - 1 ) {
-                        if ( *( transformInX ) == 0 && *( transformInX + 1 ) == 0 && *( transformInX + widthIn ) == 0 && *( transformInX + widthIn + 1 ) == 0 ) {
+                        if ( posX < widthRoiIn - 1 && posY < heightRoiIn - 1 ) {
                             const double coeffX = posX - startX;
                             const double coeff1 = ( 1 - coeffX ) * ( 1 - coeffY );
                             const double coeff2 = ( coeffX ) * ( 1 - coeffY );
                             const double coeff3 = ( 1 - coeffX ) * ( coeffY );
                             const double coeff4 = ( coeffX ) * ( coeffY );
 
-                            const uint8_t * id1 = kb_pal + static_cast<uint32_t>( *( inX ) ) * 3;
-                            const uint8_t * id2 = kb_pal + static_cast<uint32_t>( *( inX + 1 ) ) * 3;
-                            const uint8_t * id3 = kb_pal + static_cast<uint32_t>( *( inX + widthIn ) ) * 3;
-                            const uint8_t * id4 = kb_pal + static_cast<uint32_t>( *( inX + widthIn + 1 ) ) * 3;
+                            const uint8_t * id1 = kb_pal + static_cast<uint32_t>( *( imageInX ) ) * 3;
+                            const uint8_t * id2 = kb_pal + static_cast<uint32_t>( *( imageInX + 1 ) ) * 3;
+                            const uint8_t * id3 = kb_pal + static_cast<uint32_t>( *( imageInX + widthIn ) ) * 3;
+                            const uint8_t * id4 = kb_pal + static_cast<uint32_t>( *( imageInX + widthIn + 1 ) ) * 3;
 
                             const double red = *id1 * coeff1 + *id2 * coeff2 + *id3 * coeff3 + *id4 * coeff4 + 0.5;
                             const double green = *( id1 + 1 ) * coeff1 + *( id2 + 1 ) * coeff2 + *( id3 + 1 ) * coeff3 + *( id4 + 1 ) * coeff4 + 0.5;
                             const double blue = *( id1 + 2 ) * coeff1 + *( id2 + 2 ) * coeff2 + *( id3 + 2 ) * coeff3 + *( id4 + 2 ) * coeff4 + 0.5;
 
-                            *outX = GetPALColorId( static_cast<uint8_t>( red ), static_cast<uint8_t>( green ), static_cast<uint8_t>( blue ) );
+                            *imageOutX = GetPALColorId( static_cast<uint8_t>( red ), static_cast<uint8_t>( green ), static_cast<uint8_t>( blue ) );
                         }
                         else {
-                            *outX = *( inX );
+                            *imageOutX = *( imageInX );
                         }
                     }
-                    else {
-                        *outX = *( inX );
-                    }
+                }
+            }
+            else {
+                const uint8_t * transformInY = in.transform() + offsetInY;
+                uint8_t * transformOutY = out.transform() + offsetOutY;
 
-                    *transformOutX = *( transformInX );
+                for ( int32_t y = 0; y < heightRoiOut; ++y, imageOutY += widthOut, transformOutY += widthOut ) {
+                    const double posY = positionY[y];
+                    const int32_t startY = static_cast<int32_t>( posY );
+                    const double coeffY = posY - startY;
+
+                    uint8_t * imageOutX = imageOutY;
+                    uint8_t * transformOutX = transformOutY;
+
+                    for ( int32_t x = 0; x < widthRoiOut; ++x, ++imageOutX, ++transformOutX ) {
+                        const double posX = positionX[x];
+                        const int32_t startX = static_cast<int32_t>( posX );
+                        const int32_t offsetIn = startY * widthIn + startX;
+
+                        const uint8_t * imageInX = imageInY + offsetIn;
+                        const uint8_t * transformInX = transformInY + offsetIn;
+
+                        if ( posX < widthIn - 1 && posY < heightRoiIn - 1 ) {
+                            if ( *( transformInX ) == 0 && *( transformInX + 1 ) == 0 && *( transformInX + widthRoiIn ) == 0
+                                 && *( transformInX + widthRoiIn + 1 ) == 0 ) {
+                                const double coeffX = posX - startX;
+                                const double coeff1 = ( 1 - coeffX ) * ( 1 - coeffY );
+                                const double coeff2 = ( coeffX ) * ( 1 - coeffY );
+                                const double coeff3 = ( 1 - coeffX ) * ( coeffY );
+                                const double coeff4 = ( coeffX ) * ( coeffY );
+
+                                const uint8_t * id1 = kb_pal + static_cast<uint32_t>( *( imageInX ) ) * 3;
+                                const uint8_t * id2 = kb_pal + static_cast<uint32_t>( *( imageInX + 1 ) ) * 3;
+                                const uint8_t * id3 = kb_pal + static_cast<uint32_t>( *( imageInX + widthIn ) ) * 3;
+                                const uint8_t * id4 = kb_pal + static_cast<uint32_t>( *( imageInX + widthIn + 1 ) ) * 3;
+
+                                const double red = *id1 * coeff1 + *id2 * coeff2 + *id3 * coeff3 + *id4 * coeff4 + 0.5;
+                                const double green = *( id1 + 1 ) * coeff1 + *( id2 + 1 ) * coeff2 + *( id3 + 1 ) * coeff3 + *( id4 + 1 ) * coeff4 + 0.5;
+                                const double blue = *( id1 + 2 ) * coeff1 + *( id2 + 2 ) * coeff2 + *( id3 + 2 ) * coeff3 + *( id4 + 2 ) * coeff4 + 0.5;
+
+                                *imageOutX = GetPALColorId( static_cast<uint8_t>( red ), static_cast<uint8_t>( green ), static_cast<uint8_t>( blue ) );
+                            }
+                            else {
+                                *imageOutX = *( imageInX );
+                            }
+                        }
+                        else {
+                            *imageOutX = *( imageInX );
+                        }
+
+                        *transformOutX = *( transformInX );
+                    }
                 }
             }
         }
         else {
-            const uint8_t * outYEnd = outY + widthOut * heightOut;
+            const uint8_t * imageOutYEnd = imageOutY + widthOut * heightRoiOut;
             int32_t idY = 0;
 
             // Precalculation of X position
-            std::vector<int32_t> positionX( widthOut );
-            for ( int32_t x = 0; x < widthOut; ++x )
-                positionX[x] = ( x * widthIn ) / widthOut;
+            std::vector<int32_t> positionX( widthRoiOut );
+            for ( int32_t x = 0; x < widthRoiOut; ++x )
+                positionX[x] = ( x * widthRoiIn ) / widthRoiOut;
 
-            for ( ; outY != outYEnd; outY += widthOut, transformOutY += widthOut, ++idY ) {
-                uint8_t * outX = outY;
-                uint8_t * transformOutX = transformOutY;
-                const uint8_t * outXEnd = outX + widthOut;
+            if ( in.singleLayer() && out.singleLayer() ) {
+                for ( ; imageOutY != imageOutYEnd; imageOutY += widthOut, ++idY ) {
+                    uint8_t * imageOutX = imageOutY;
+                    const uint8_t * imageOutXEnd = imageOutX + widthRoiOut;
 
-                const int32_t offset = ( ( idY * heightIn ) / heightOut ) * widthIn;
-                const uint8_t * inX = inY + offset;
-                const uint8_t * transformInX = transformInY + offset;
-                const int32_t * idX = positionX.data();
+                    const int32_t offset = ( ( idY * heightRoiIn ) / heightRoiOut ) * widthIn;
+                    const uint8_t * imageInX = imageInY + offset;
+                    const int32_t * idX = positionX.data();
 
-                for ( ; outX != outXEnd; ++outX, ++transformOutX, ++idX ) {
-                    *outX = *( inX + ( *idX ) );
-                    *transformOutX = *( transformInX + ( *idX ) );
+                    for ( ; imageOutX != imageOutXEnd; ++imageOutX, ++idX ) {
+                        *imageOutX = *( imageInX + ( *idX ) );
+                    }
+                }
+            }
+            else {
+                const uint8_t * transformInY = in.transform() + offsetInY;
+                uint8_t * transformOutY = out.transform() + offsetOutY;
+
+                for ( ; imageOutY != imageOutYEnd; imageOutY += widthOut, transformOutY += widthOut, ++idY ) {
+                    uint8_t * imageOutX = imageOutY;
+                    uint8_t * transformOutX = transformOutY;
+                    const uint8_t * imageOutXEnd = imageOutX + widthRoiOut;
+
+                    const int32_t offset = ( ( idY * heightRoiIn ) / heightRoiOut ) * widthIn;
+                    const uint8_t * imageInX = imageInY + offset;
+                    const uint8_t * transformInX = transformInY + offset;
+                    const int32_t * idX = positionX.data();
+
+                    for ( ; imageOutX != imageOutXEnd; ++imageOutX, ++transformOutX, ++idX ) {
+                        *imageOutX = *( imageInX + ( *idX ) );
+                        *transformOutX = *( transformInX + ( *idX ) );
+                    }
                 }
             }
         }
@@ -1618,5 +1830,34 @@ namespace fheroes2
         Copy( in, inX + widthIn - cornerWidth, inY + heightIn - cornerHeight, out, widthOut - cornerWidth, heightOut - cornerHeight, cornerWidth, cornerHeight );
 
         return out;
+    }
+
+    void Transpose( const Image & in, Image & out )
+    {
+        if ( in.empty() || out.empty() || in.width() != out.height() || in.height() != out.width() )
+            return;
+
+        const int32_t width = in.width();
+        const int32_t height = in.height();
+
+        const uint8_t * imageInY = in.image();
+        const uint8_t * imageInYEnd = imageInY + width * height;
+        uint8_t * imageOutX = out.image();
+
+        const uint8_t * transformInY = in.transform();
+        uint8_t * transformOutX = out.transform();
+
+        for ( ; imageInY != imageInYEnd; imageInY += width, transformInY += width, ++imageOutX, ++transformOutX ) {
+            const uint8_t * imageInX = imageInY;
+            const uint8_t * imageInXEnd = imageInX + width;
+            uint8_t * imageOutY = imageOutX;
+
+            const uint8_t * transformInX = transformInY;
+            uint8_t * transformOutY = transformOutX;
+            for ( ; imageInX != imageInXEnd; ++imageInX, ++transformInX, imageOutY += height, transformOutY += height ) {
+                *imageOutY = *imageInX;
+                *transformOutY = *transformInX;
+            }
+        }
     }
 }

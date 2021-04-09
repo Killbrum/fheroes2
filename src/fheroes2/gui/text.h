@@ -27,8 +27,8 @@
 #include <vector>
 
 #include "gamedefs.h"
-
 #include "screen.h"
+#include "translations.h"
 #include "ui_tool.h"
 
 namespace Font
@@ -40,7 +40,8 @@ namespace Font
         YELLOW_BIG = 0x04,
         YELLOW_SMALL = 0x08,
         GRAY_BIG = 0x10,
-        GRAY_SMALL = 0x20
+        GRAY_SMALL = 0x20,
+        WHITE_LARGE = 0x40
     };
 }
 enum
@@ -205,10 +206,10 @@ class TextBox : protected fheroes2::Rect
 {
 public:
     TextBox();
-    TextBox( const std::string &, int, u32 width );
+    TextBox( const std::string &, int, uint32_t width_ );
     TextBox( const std::string &, int, const fheroes2::Rect & );
 
-    void Set( const std::string &, int, u32 width );
+    void Set( const std::string &, int, uint32_t width_ );
     void SetAlign( int type );
 
     int32_t x() const

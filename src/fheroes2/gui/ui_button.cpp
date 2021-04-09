@@ -19,9 +19,11 @@
  ***************************************************************************/
 
 #include "ui_button.h"
-#include "agg.h"
+#include "agg_image.h"
 #include "dialog.h"
 #include "game.h"
+#include "icn.h"
+#include "localevent.h"
 #include "pal.h"
 #include "settings.h"
 
@@ -54,6 +56,8 @@ namespace fheroes2
         , _isPressed( false )
         , _isEnabled( true )
         , _isVisible( true )
+        , _releasedSprite( nullptr )
+        , _releasedDisabled()
     {}
 
     ButtonBase::~ButtonBase() {}
@@ -135,7 +139,7 @@ namespace fheroes2
         _offsetY = offsetY_;
     }
 
-    void ButtonBase::draw( Image & area ) const
+    void ButtonBase::draw( Image & area )
     {
         if ( !isVisible() )
             return;
@@ -151,10 +155,12 @@ namespace fheroes2
                 Blit( sprite, area, _offsetX + sprite.x(), _offsetY + sprite.y() );
             }
             else {
-                // TODO: cache this Sprite to speed up everything
-                Sprite image = sprite;
-                ApplyPalette( image, PAL::GetPalette( PAL::DARKENING ) );
-                Blit( image, area, _offsetX + sprite.x(), _offsetY + sprite.y() );
+                if ( !_releasedDisabled || ( _releasedSprite != &sprite ) ) {
+                    _releasedSprite = &sprite;
+                    _releasedDisabled.reset( new Sprite( sprite ) );
+                    ApplyPalette( *_releasedDisabled, PAL::GetPalette( PAL::PaletteType::DARKENING ) );
+                }
+                Blit( *_releasedDisabled, area, _offsetX + _releasedDisabled->x(), _offsetY + _releasedDisabled->y() );
             }
         }
     }
@@ -419,7 +425,7 @@ namespace fheroes2
 
         for ( size_t i = 0; i < _button.size(); ++i ) {
             if ( sender == _button[i] ) {
-                ButtonBase * button = _button[i];
+                const ButtonBase * button = _button[i];
                 if ( button->isPressed() ) {
                     unsubscribeAll();
 

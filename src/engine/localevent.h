@@ -23,9 +23,13 @@
 #ifndef H2LOCALEVENT_H
 #define H2LOCALEVENT_H
 
+#include <string>
+
 #include "rect.h"
-#include "thread.h"
+#include "timing.h"
 #include "types.h"
+
+#include <SDL.h>
 
 enum KeySym
 {
@@ -161,7 +165,16 @@ enum KeySym
 };
 
 const char * KeySymGetName( KeySym );
+
 KeySym GetKeySym( int );
+
+bool PressIntKey( u32 max, u32 & result );
+
+size_t InsertKeySym( std::string &, size_t, KeySym, u16 mod = 0 );
+
+KeySym KeySymFromChar( char );
+
+char CharFromKeySym( KeySym, u16 mod = 0 );
 
 class LocalEvent
 {
@@ -172,10 +185,8 @@ public:
     void SetGlobalFilterMouseEvents( void ( *pf )( s32, s32 ) );
     void SetGlobalFilterKeysEvents( void ( *pf )( int, int ) );
     void SetGlobalFilter( bool );
-    void SetTapMode( bool );
-    void SetTapDelayForRightClickEmulation( u32 );
-    void SetMouseOffsetX( s16 );
-    void SetMouseOffsetY( s16 );
+    void SetMouseOffsetX( int16_t );
+    void SetMouseOffsetY( int16_t );
 
     static void SetStateDefaults( void );
     static void SetState( u32 type, bool enable );
@@ -239,38 +250,54 @@ public:
 
     bool KeyPress( void ) const;
     bool KeyPress( KeySym key ) const;
+
+    bool KeyHold() const
+    {
+        return ( modes & KEY_HOLD ) != 0;
+    }
+
     KeySym KeyValue( void ) const;
     int KeyMod( void ) const;
 
-#ifdef WITHOUT_MOUSE
-    void ToggleEmulateMouse( void );
-    void SetEmulateMouse( bool );
-    void SetEmulateMouseUpKey( KeySym );
-    void SetEmulateMouseDownKey( KeySym );
-    void SetEmulateMouseLeftKey( KeySym );
-    void SetEmulateMouseRightKey( KeySym );
-    void SetEmulateMouseStep( u8 );
-    void SetEmulatePressLeftKey( KeySym );
-    void SetEmulatePressRightKey( KeySym );
-    bool EmulateMouseAction( KeySym );
-#endif
-
-    void RegisterCycling() const;
+    void RegisterCycling( void ( *preRenderDrawing )() = nullptr, void ( *postRenderDrawing )() = nullptr ) const;
 
     // These two methods are useful for video playback
     void PauseCycling();
     void ResumeCycling();
+
+    void OpenVirtualKeyboard();
+    void CloseVirtualKeyboard();
+
+#if SDL_VERSION_ATLEAST( 2, 0, 0 )
+    void OpenController();
+    void CloseController();
+    void OpenTouchpad();
+#endif
+
+    void SetControllerPointerSpeed( const int newSpeed )
+    {
+        if ( newSpeed > 0 ) {
+            _controllerPointerSpeed = newSpeed / CONTROLLER_SPEED_MOD;
+        }
+    }
 
 private:
     LocalEvent();
 
     void HandleMouseMotionEvent( const SDL_MouseMotionEvent & );
     void HandleMouseButtonEvent( const SDL_MouseButtonEvent & );
-    void HandleKeyboardEvent( SDL_KeyboardEvent & );
+    void HandleKeyboardEvent( const SDL_KeyboardEvent & );
+    void StopSounds();
+    void ResumeSounds();
 
 #if SDL_VERSION_ATLEAST( 2, 0, 0 )
     void HandleMouseWheelEvent( const SDL_MouseWheelEvent & );
     static int GlobalFilterEvents( void *, SDL_Event * );
+    void HandleControllerAxisEvent( const SDL_ControllerAxisEvent & motion );
+    void HandleControllerButtonEvent( const SDL_ControllerButtonEvent & button );
+    void ProcessControllerAxisMotion();
+    void HandleTouchEvent( const SDL_TouchFingerEvent & event );
+    void OnSdl2WindowEvent( const SDL_Event & event );
 #else
     static int GlobalFilterEvents( const SDL_Event * );
 #endif
@@ -279,15 +306,16 @@ private:
     {
         KEY_PRESSED = 0x0001,
         MOUSE_MOTION = 0x0002,
-        MOUSE_PRESSED = 0x0004,
+        MOUSE_PRESSED = 0x0004, // mouse button is currently pressed
         GLOBAL_FILTER = 0x0008,
-        CLICK_LEFT = 0x0010,
-        CLICK_RIGHT = 0x0020,
-        CLICK_MIDDLE = 0x0040,
-        TAP_MODE = 0x0080,
+        MOUSE_RELEASED = 0x0010, // mouse button has just been released
+        MOUSE_CLICKED = 0x0020, // mouse button has been clicked
+        UNUSED_1 = 0x0040,
+        UNUSED_2 = 0x0080,
         MOUSE_OFFSET = 0x0100,
-        CLOCK_ON = 0x0200,
-        MOUSE_WHEEL = 0x0400
+        UNUSED_3 = 0x0200,
+        MOUSE_WHEEL = 0x0400,
+        KEY_HOLD = 0x0800
     };
 
     void SetModes( flag_t );
@@ -315,24 +343,41 @@ private:
     void ( *redraw_cursor_func )( s32, s32 );
     void ( *keyboard_filter_func )( int, int );
 
-    SDL::Time clock;
-    u32 clock_delay;
     int loop_delay;
 
     // These members are used for restoring music and sounds when an user reopens the window
     bool _isHiddenWindow;
     bool _isMusicPaused;
     bool _isSoundPaused;
+    uint16_t _musicVolume;
 
-#ifdef WITHOUT_MOUSE
-    bool emulate_mouse;
-    KeySym emulate_mouse_up;
-    KeySym emulate_mouse_down;
-    KeySym emulate_mouse_left;
-    KeySym emulate_mouse_right;
-    int emulate_mouse_step;
-    KeySym emulate_press_left;
-    KeySym emulate_press_right;
+    enum
+    {
+        CONTROLLER_L_DEADZONE = 3000,
+        CONTROLLER_R_DEADZONE = 25000
+    };
+
+    // used to convert user-friendly pointer speed values into more useable ones
+    const double CONTROLLER_SPEED_MOD = 2000000.0;
+    double _controllerPointerSpeed = 10.0 / CONTROLLER_SPEED_MOD;
+    double _emulatedPointerPosX = 0;
+    double _emulatedPointerPosY = 0;
+
+#if SDL_VERSION_ATLEAST( 2, 0, 0 )
+    // bigger value correndsponds to faster pointer movement speed with bigger stick axis values
+    const double CONTROLLER_AXIS_SPEEDUP = 1.03;
+
+    SDL_GameController * _gameController = nullptr;
+    SDL_FingerID _firstFingerId = 0;
+    fheroes2::Time _controllerTimer;
+    int16_t _controllerLeftXAxis = 0;
+    int16_t _controllerLeftYAxis = 0;
+    int16_t _controllerRightXAxis = 0;
+    int16_t _controllerRightYAxis = 0;
+    bool _controllerScrollActive = false;
+    bool _dpadScrollActive = false;
+    bool _touchpadAvailable = false;
+    int16_t _numTouches = 0;
 #endif
 };
 

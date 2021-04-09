@@ -29,6 +29,7 @@
 #include "rect.h"
 #include "types.h"
 
+class Players;
 class Heroes;
 class Castle;
 
@@ -44,7 +45,7 @@ namespace Game
         HIGHSCORES,
         CREDITS,
         NEWSTANDARD,
-        NEWCAMPAIN,
+        NEWCAMPAIGN,
         NEWMULTI,
         NEWHOTSEAT,
         NEWNETWORK,
@@ -52,6 +53,8 @@ namespace Game
         LOADSTANDARD,
         LOADCAMPAIN,
         LOADMULTI,
+        LOADHOTSEAT,
+        LOADNETWORK,
         SCENARIOINFO,
         SELECTSCENARIO,
         STARTGAME,
@@ -61,7 +64,9 @@ namespace Game
         EDITLOADMAP,
         EDITSAVEMAP,
         EDITSTART,
-        ENDTURN
+        ENDTURN,
+        SELECT_CAMPAIGN_SCENARIO,
+        COMPLETE_CAMPAIGN_SCENARIO
     };
 
     void Init( void );
@@ -80,6 +85,9 @@ namespace Game
         TYPE_HOTSEAT = 0x04,
         TYPE_NETWORK = 0x08,
         TYPE_BATTLEONLY = 0x10,
+
+        // TYPE_LOADTYPE used in the Settings::LoadedGameVersion, if you change that value,
+        // change in that function as well.
         TYPE_LOADFILE = 0x80,
         TYPE_MULTI = TYPE_HOTSEAT | TYPE_NETWORK
     };
@@ -102,7 +110,7 @@ namespace Game
         EVENT_BUTTON_HIGHSCORES,
         EVENT_BUTTON_CREDITS,
         EVENT_BUTTON_STANDARD,
-        EVENT_BUTTON_CAMPAIN,
+        EVENT_BUTTON_CAMPAIGN,
         EVENT_BUTTON_MULTI,
         EVENT_BUTTON_SETTINGS,
         EVENT_BUTTON_SELECT,
@@ -117,8 +125,6 @@ namespace Game
         EVENT_DEFAULT_RIGHT,
         EVENT_SYSTEM_FULLSCREEN,
         EVENT_SYSTEM_SCREENSHOT,
-        EVENT_SYSTEM_DEBUG1,
-        EVENT_SYSTEM_DEBUG2,
         EVENT_SLEEPHERO,
         EVENT_ENDTURN,
         EVENT_NEXTHERO,
@@ -158,12 +164,14 @@ namespace Game
         EVENT_SHOWBUTTONS,
         EVENT_SHOWSTATUS,
         EVENT_SHOWICONS,
-        EVENT_SWITCHGROUP,
-        EVENT_EMULATETOGGLE,
-        EVENT_LAST
+        EVENT_STACKSPLIT_SHIFT,
+        EVENT_STACKSPLIT_CTRL,
+        EVENT_JOINSTACKS,
+        EVENT_LAST,
     };
 
     bool HotKeyPressEvent( int );
+    bool HotKeyHoldEvent( const int eventID );
 
     enum
     {
@@ -193,7 +201,6 @@ namespace Game
         BATTLE_POPUP_DELAY,
         BATTLE_COLOR_CYCLE_DELAY,
         BATTLE_SELECTED_UNIT_DELAY,
-        AUTOHIDE_STATUS_DELAY,
         //
         CURRENT_HERO_DELAY,
         CURRENT_AI_DELAY,
@@ -217,7 +224,7 @@ namespace Game
     int HighScores();
     int Credits( void );
     int NewStandard( void );
-    int NewCampain( void );
+    int NewCampaign();
     int NewMulti( void );
     int NewHotSeat( void );
     int NewNetwork( void );
@@ -225,12 +232,17 @@ namespace Game
     int LoadStandard( void );
     int LoadCampain( void );
     int LoadMulti( void );
+    int LoadHotseat();
+    int LoadNetwork();
     int ScenarioInfo( void );
+    int SelectCampaignScenario();
     int SelectScenario( void );
     int StartGame( void );
     int StartBattleOnly( void );
-    int NetworkHost( void );
-    int NetworkGuest( void );
+    int DisplayLoadGameDialog();
+    int CompleteCampaignScenario();
+
+    bool IsOriginalCampaignPresent();
 
     void EnvironmentSoundMixer( void );
     int GetKingdomColors( void );
@@ -250,36 +262,43 @@ namespace Game
     void PlayPickupSound( void );
     void DisableChangeMusic( bool );
     bool ChangeMusicDisabled( void );
-    void OpenHeroesDialog( Heroes & hero, bool updateFocus = true );
-    void OpenCastleDialog( Castle & );
+    void OpenHeroesDialog( Heroes & hero, bool updateFocus, bool windowIsGameWorld );
+    void OpenCastleDialog( Castle & castle, bool updateFocus = true );
     std::string GetEncodeString( const std::string & );
+    // Returns the difficulty level based on the type of game.
+    int getDifficulty();
+    void LoadPlayers( const std::string & mapFileName, Players & players );
+    void saveDifficulty( const int difficulty );
+    void SavePlayers( const std::string & mapFileName, const Players & players );
+
+    std::string GetSaveDir();
+    std::string GetSaveFileExtension();
+    std::string GetSaveFileExtension( const int gameType );
 
     namespace ObjectFadeAnimation
     {
-        struct Info
+        struct FadeTask
         {
-            Info();
-            Info( u8 object_, u8 index_, s32 tile_, u32 alpha_ = 255u, bool fadeOut = true );
+            FadeTask();
 
-            uint8_t object;
-            uint8_t index;
-            int32_t tile;
-            uint32_t alpha;
-            fheroes2::Size surfaceSize;
-            bool isFadeOut;
+            FadeTask( int object_, uint32_t objectIndex_, uint32_t animationIndex_, int32_t fromIndex_, int32_t toIndex_, uint8_t alpha_, bool fadeOut_, bool fadeIn_,
+                      uint8_t objectTileset_ );
+
+            int object;
+            uint32_t objectIndex;
+            uint32_t animationIndex;
+            int32_t fromIndex;
+            int32_t toIndex;
+            uint8_t alpha;
+            bool fadeOut;
+            bool fadeIn;
+            uint8_t objectTileset;
         };
 
-        void Set( const Info & info );
-        Info & Get();
-    }
+        const FadeTask & GetFadeTask();
 
-    namespace Editor
-    {
-        int MainMenu( void );
-        int NewMaps( void );
-        int LoadMaps( void );
-        int StartGame( void );
-        int StartGame( void );
+        void PrepareFadeTask( int object, int32_t fromTile, int32_t toTile, bool fadeOut, bool fadeIn );
+        void PerformFadeTask();
     }
 
     u32 GetStep4Player( u32, u32, u32 );

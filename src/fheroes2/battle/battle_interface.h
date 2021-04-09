@@ -36,6 +36,12 @@
 #include "ui_button.h"
 
 class Settings;
+class LocalEvent;
+
+namespace fheroes2
+{
+    class StandardWindow;
+}
 
 namespace Battle
 {
@@ -51,7 +57,7 @@ namespace Battle
     struct Result;
 
     void DialogBattleSettings( void );
-    bool DialogBattleSurrender( const HeroBase & hero, u32 cost, const Kingdom & kingdom );
+    bool DialogBattleSurrender( const HeroBase & hero, u32 cost, Kingdom & kingdom );
 
     enum HeroAnimation
     {
@@ -98,7 +104,7 @@ namespace Battle
 
         enum
         {
-            HERO_X_OFFSET = 32,
+            HERO_X_OFFSET = 30,
             LEFT_HERO_Y_OFFSET = 183,
             RIGHT_HERO_Y_OFFSET = 148,
             CAPTAIN_X_OFFSET = 6,
@@ -127,7 +133,7 @@ namespace Battle
         {
             listlog = logs;
         };
-        void SetMessage( const std::string &, bool = false );
+        void SetMessage( const std::string & message, bool top = false );
         void Redraw( void );
         const std::string & GetMessage( void ) const;
 
@@ -152,7 +158,7 @@ namespace Battle
         void QueueEventProcessing( std::string & msg, const Point & offset );
 
     private:
-        typedef std::pair<const Unit *, Rect> UnitPos;
+        using UnitPos = std::pair<const Unit *, Rect>;
 
         void RedrawUnit( const Rect & pos, const Battle::Unit & unit, bool revert, bool current, fheroes2::Image & output ) const;
 
@@ -168,15 +174,15 @@ namespace Battle
     public:
         PopupDamageInfo();
 
-        void SetInfo( const Cell * c, const Unit * a, const Unit * b, const Point & offset );
+        void SetInfo( const Cell * cell, const Unit * attacker, const Unit * defender, const Point & offset );
         void Reset();
         void Redraw( int, int );
 
     private:
-        const Cell * cell;
-        const Unit * attacker;
-        const Unit * defender;
-        bool redraw;
+        const Cell * _cell;
+        const Unit * _attacker;
+        const Unit * _defender;
+        bool _redraw;
     };
 
     class Interface
@@ -185,11 +191,12 @@ namespace Battle
         Interface( Arena &, s32 );
         ~Interface();
 
+        void fullRedraw(); // only at the start of the battle
         void Redraw();
         void RedrawPartialStart();
         void RedrawPartialFinish();
         void HumanTurn( const Unit &, Actions & );
-        bool NetworkTurn( Result & );
+        bool NetworkTurn( const Result & );
 
         const Rect & GetArea( void ) const;
         Point GetMouseCursor() const;
@@ -202,14 +209,14 @@ namespace Battle
         void RedrawActionAttackPart2( Unit &, TargetsInfo & );
         void RedrawActionSpellCastPart1( const Spell &, s32, const HeroBase *, const std::string &, const TargetsInfo & );
         void RedrawActionSpellCastPart2( const Spell &, TargetsInfo & );
-        void RedrawActionResistSpell( const Unit & );
+        void RedrawActionResistSpell( const Unit & target, bool playSound );
         void RedrawActionMonsterSpellCastStatus( const Unit &, const TargetInfo & );
         void RedrawActionMove( Unit &, const Indexes & );
         void RedrawActionFly( Unit &, const Position & );
         void RedrawActionMorale( Unit &, bool );
-        void RedrawActionLuck( Unit & );
-        void RedrawActionTowerPart1( Tower &, Unit & );
-        void RedrawActionTowerPart2( TargetInfo & );
+        void RedrawActionLuck( const Unit & );
+        void RedrawActionTowerPart1( const Tower &, const Unit & );
+        void RedrawActionTowerPart2( const Tower &, const TargetInfo & );
         void RedrawActionCatapult( int );
         void RedrawActionTeleportSpell( Unit &, s32 );
         void RedrawActionEarthQuakeSpell( const std::vector<int> & );
@@ -231,7 +238,6 @@ namespace Battle
         void HumanBattleTurn( const Unit &, Actions &, std::string & );
         void HumanCastSpellTurn( const Unit &, Actions &, std::string & );
 
-        void RedrawBorder( void );
         void RedrawCover( void );
         void RedrawCoverStatic();
         void RedrawCoverBoard( const Settings &, const Board & );
@@ -239,7 +245,7 @@ namespace Battle
         void RedrawHighObjects( s32 );
         void RedrawCastle1( const Castle & );
         void RedrawCastle2( const Castle &, s32 );
-        void RedrawCastle3( const Castle & );
+        void RedrawCastleMainTower( const Castle & );
         void RedrawKilled( void );
         void RedrawInterface( void );
         void RedrawOpponents( void );
@@ -251,16 +257,16 @@ namespace Battle
         void RedrawActionWincesKills( TargetsInfo & targets, Unit * attacker = NULL );
         void RedrawActionArrowSpell( const Unit & );
         void RedrawActionColdRaySpell( Unit & );
-        void RedrawActionDisruptingRaySpell( Unit & );
-        void RedrawActionBloodLustSpell( Unit & );
-        void RedrawActionStoneSpell( Unit & target );
+        void RedrawActionDisruptingRaySpell( const Unit & );
+        void RedrawActionBloodLustSpell( const Unit & );
+        void RedrawActionStoneSpell( const Unit & target );
         void RedrawActionColdRingSpell( s32, const TargetsInfo & );
         void RedrawActionElementalStormSpell( const TargetsInfo & );
         void RedrawActionArmageddonSpell();
         void RedrawActionHolyShoutSpell( const TargetsInfo & targets, int strength );
         void RedrawActionResurrectSpell( Unit &, const Spell & );
         void RedrawActionDeathWaveSpell( const TargetsInfo & targets, int strength );
-        void RedrawActionLightningBoltSpell( Unit & );
+        void RedrawActionLightningBoltSpell( const Unit & );
         void RedrawActionChainLightningSpell( const TargetsInfo & );
         void RedrawLightningOnTargets( const std::vector<Point> & points, const Rect & drawRoi ); // helper function
         void RedrawRaySpell( const Unit & target, int spellICN, int spellSound, uint32_t size );
@@ -286,7 +292,7 @@ namespace Battle
         void ButtonSkipAction( Actions & );
         void ButtonWaitAction( Actions & );
         void MouseLeftClickBoardAction( u32, const Cell &, Actions & );
-        void MousePressRightBoardAction( u32, const Cell &, Actions & );
+        void MousePressRightBoardAction( u32, const Cell & );
 
         int GetBattleCursor( std::string & ) const;
         int GetBattleSpellCursor( std::string & ) const;
@@ -333,7 +339,6 @@ namespace Battle
 
         s32 index_pos;
         s32 teleport_src;
-        Rect pocket_book;
         Rect main_tower;
 
         StatusListBox * listlog;
@@ -341,6 +346,8 @@ namespace Battle
 
         PopupDamageInfo popup;
         ArmiesOrder armies_order;
+
+        std::unique_ptr<fheroes2::StandardWindow> _background;
     };
 }
 

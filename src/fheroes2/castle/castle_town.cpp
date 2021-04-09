@@ -23,13 +23,14 @@
 #include <string>
 #include <vector>
 
-#include "agg.h"
+#include "agg_image.h"
 #include "buildinginfo.h"
 #include "castle.h"
 #include "cursor.h"
 #include "dialog.h"
 #include "game.h"
 #include "heroes.h"
+#include "icn.h"
 #include "kingdom.h"
 #include "payment.h"
 #include "race.h"
@@ -148,9 +149,11 @@ u32 Castle::OpenTown( void )
     Cursor & cursor = Cursor::Get();
     cursor.Hide();
 
-    Dialog::FrameBorder background( Size( fheroes2::Display::DEFAULT_WIDTH, fheroes2::Display::DEFAULT_HEIGHT ) );
+    const fheroes2::ImageRestorer restorer( display, ( display.width() - fheroes2::Display::DEFAULT_WIDTH ) / 2,
+                                            ( display.height() - fheroes2::Display::DEFAULT_HEIGHT ) / 2, fheroes2::Display::DEFAULT_WIDTH,
+                                            fheroes2::Display::DEFAULT_HEIGHT );
 
-    const Point & cur_pt = background.GetArea();
+    const Point cur_pt( restorer.x(), restorer.y() );
     Point dst_pt( cur_pt );
 
     fheroes2::Blit( fheroes2::AGG::GetICN( ICN::CASLWIND, 0 ), display, dst_pt.x, dst_pt.y );
@@ -303,7 +306,7 @@ u32 Castle::OpenTown( void )
         dst_pt.y = cur_pt.y + 168;
         text.Blit( dst_pt );
 
-        text.Set( GetString( captain.GetAttack() ) );
+        text.Set( std::to_string( captain.GetAttack() ) );
         dst_pt.x += 90;
         text.Blit( dst_pt );
 
@@ -312,7 +315,7 @@ u32 Castle::OpenTown( void )
         dst_pt.y += 12;
         text.Blit( dst_pt );
 
-        text.Set( GetString( captain.GetDefense() ) );
+        text.Set( std::to_string( captain.GetDefense() ) );
         dst_pt.x += 90;
         text.Blit( dst_pt );
 
@@ -321,7 +324,7 @@ u32 Castle::OpenTown( void )
         dst_pt.y += 12;
         text.Blit( dst_pt );
 
-        text.Set( GetString( captain.GetPower() ) );
+        text.Set( std::to_string( captain.GetPower() ) );
         dst_pt.x += 90;
         text.Blit( dst_pt );
 
@@ -330,7 +333,7 @@ u32 Castle::OpenTown( void )
         dst_pt.y += 12;
         text.Blit( dst_pt );
 
-        text.Set( GetString( captain.GetKnowledge() ) );
+        text.Set( std::to_string( captain.GetKnowledge() ) );
         dst_pt.x += 90;
         text.Blit( dst_pt );
 
@@ -346,7 +349,9 @@ u32 Castle::OpenTown( void )
     Kingdom & kingdom = GetKingdom();
 
     Heroes * hero1 = kingdom.GetRecruits().GetHero1();
-    Heroes * hero2 = kingdom.GetLastLostHero() && kingdom.GetLastLostHero() != hero1 ? kingdom.GetLastLostHero() : kingdom.GetRecruits().GetHero2();
+
+    Heroes * lastLostHero = kingdom.GetLastLostHero();
+    Heroes * hero2 = lastLostHero && lastLostHero != hero1 ? lastLostHero : kingdom.GetRecruits().GetHero2();
 
     std::string not_allow1_msg, not_allow2_msg;
     const bool allow_buy_hero1 = hero1 ? AllowBuyHero( *hero1, &not_allow1_msg ) : false;
@@ -369,9 +374,8 @@ u32 Castle::OpenTown( void )
 
     // indicator
     if ( !allow_buy_hero1 ) {
-        dst_pt.x += 83;
-        dst_pt.y += 75;
-        fheroes2::Blit( fheroes2::AGG::GetICN( ICN::TOWNWIND, 12 ), display, dst_pt.x, dst_pt.y );
+        const fheroes2::Sprite & spriteDeny = fheroes2::AGG::GetICN( ICN::TOWNWIND, 12 );
+        fheroes2::Blit( spriteDeny, display, dst_pt.x + 102 - 4 + 1 - spriteDeny.width(), dst_pt.y + 93 - 2 - spriteDeny.height() );
     }
 
     // second hero
@@ -387,9 +391,8 @@ u32 Castle::OpenTown( void )
 
     // indicator
     if ( !allow_buy_hero2 ) {
-        dst_pt.x += 83;
-        dst_pt.y += 75;
-        fheroes2::Blit( fheroes2::AGG::GetICN( ICN::TOWNWIND, 12 ), display, dst_pt.x, dst_pt.y );
+        const fheroes2::Sprite & spriteDeny = fheroes2::AGG::GetICN( ICN::TOWNWIND, 12 );
+        fheroes2::Blit( spriteDeny, display, dst_pt.x + 102 - 4 + 1 - spriteDeny.width(), dst_pt.y + 93 - 2 - spriteDeny.height() );
     }
 
     // bottom bar
@@ -401,15 +404,15 @@ u32 Castle::OpenTown( void )
     StatusBar statusBar;
     statusBar.SetCenter( dst_pt.x + bar.width() / 2, dst_pt.y + 12 );
 
-    // redraw resource panel
-    const Rect & rectResource = RedrawResourcePanel( cur_pt );
-
     // button exit
     dst_pt.x = cur_pt.x + 553;
     dst_pt.y = cur_pt.y + 428;
     fheroes2::Button buttonExit( dst_pt.x, dst_pt.y, ICN::TREASURY, 1, 2 );
-
     buttonExit.draw();
+
+    // redraw resource panel
+    const Rect & rectResource = RedrawResourcePanel( cur_pt );
+    const fheroes2::Rect resActiveArea( rectResource.x, rectResource.y, rectResource.w, buttonExit.area().y - rectResource.y - 3 );
 
     cursor.Show();
     display.render();
@@ -423,11 +426,11 @@ u32 Castle::OpenTown( void )
         if ( le.MouseClickLeft( buttonExit.area() ) || HotKeyCloseWindow )
             break;
 
-        if ( le.MouseClickLeft( rectResource ) ) {
+        if ( le.MouseClickLeft( resActiveArea ) ) {
             fheroes2::ButtonRestorer exitRestorer( buttonExit );
             Dialog::ResourceInfo( _( "Income" ), "", world.GetKingdom( GetColor() ).GetIncome( INCOME_ALL ), Dialog::OK );
         }
-        else if ( le.MousePressRight( rectResource ) ) {
+        else if ( le.MousePressRight( resActiveArea ) ) {
             Dialog::ResourceInfo( _( "Income" ), "", world.GetKingdom( GetColor() ).GetIncome( INCOME_ALL ), 0 );
         }
 
@@ -586,7 +589,7 @@ u32 Castle::OpenTown( void )
             statusBar.ShowMessage( _( "Set garrison combat formation to 'Grouped'" ) );
         else if ( le.MouseCursor( buttonExit.area() ) )
             statusBar.ShowMessage( _( "Exit Castle Options" ) );
-        else if ( le.MouseCursor( rectResource ) )
+        else if ( le.MouseCursor( resActiveArea ) )
             statusBar.ShowMessage( _( "Show Income" ) );
         else
             // clear all

@@ -25,9 +25,6 @@
 
 #include "gamedefs.h"
 
-#define MODES_ALL 0xFFFFFFFF
-
-class StreamBase;
 class StreamBase;
 
 class BitModes
@@ -47,10 +44,6 @@ public:
     void ResetModes( u32 f )
     {
         modes &= ~f;
-    }
-    void ToggleModes( u32 f )
-    {
-        modes ^= f;
     }
 
     bool Modes( u32 f ) const

@@ -28,8 +28,11 @@
 #include <vector>
 
 #include "army_troop.h"
-#include "bitmodes.h"
 #include "players.h"
+
+#ifdef WITH_XML
+#include "tinyxml.h"
+#endif
 
 class Castle;
 class HeroBase;
@@ -71,7 +74,7 @@ public:
     u32 GetUniqueCount( void ) const;
 
     bool JoinTroop( const Troop & );
-    bool JoinTroop( const Monster &, u32 );
+    bool JoinTroop( const Monster & mons, uint32_t count, bool emptySlotFirst = false );
     bool CanJoinTroop( const Monster & ) const;
 
     void JoinTroops( Troops & );
@@ -93,7 +96,7 @@ public:
 
     Troop * GetFirstValid( void );
     Troop * GetWeakestTroop( void );
-    Troop * GetSlowestTroop( void );
+    const Troop * GetSlowestTroop() const;
 
     void SortStrongest();
     void ArrangeForBattle( bool = false );
@@ -102,7 +105,9 @@ public:
     void KeepOnlyWeakest( Troops &, bool );
 
     void DrawMons32Line( int32_t, int32_t, uint32_t, uint32_t, uint32_t, uint32_t, bool, bool ) const;
-    void SplitTroopIntoFreeSlots( const Troop &, u32 slots );
+    void SplitTroopIntoFreeSlots( const Troop & troop, const Troop & selectedSlot, const uint32_t slots );
+    void AssignToFirstFreeSlot( const Troop &, const uint32_t splitCount );
+    void JoinAllTroopsOfType( const Troop & targetTroop );
 };
 
 enum
@@ -134,7 +139,6 @@ public:
     static bool StrongestTroop( const Troop *, const Troop * );
     static bool SlowestTroop( const Troop *, const Troop * );
     static bool FastestTroop( const Troop *, const Troop * );
-    static bool ArchersFirst( const Troop *, const Troop * );
     static void SwapTroops( Troop &, Troop & );
 
     // 0: fight, 1: free join, 2: join with gold, 3: flee
@@ -142,7 +146,6 @@ public:
     static bool ArmyStrongerThanEnemy( const Army &, const Army & );
 
     static void DrawMons32Line( const Troops &, s32, s32, u32, u32 = 0, u32 = 0 );
-    static void DrawMons32LineWithScoute( const Troops &, s32, s32, u32, u32, u32, u32 );
     static void DrawMonsterLines( const Troops & troops, int32_t posX, int32_t posY, uint32_t lineWidth, uint32_t drawPower, bool compact = true,
                                   bool isScouteView = true );
 
@@ -166,13 +169,14 @@ public:
     double GetStrength() const;
     double getReinforcementValue( const Troops & reinforcement ) const;
     bool isStrongerThan( const Army & target, double safetyRatio = 1.0 ) const;
+    bool isMeleeDominantArmy() const;
 
     void SetColor( int );
 
     int GetMorale( void ) const;
     int GetLuck( void ) const;
     int GetMoraleModificator( std::string * ) const;
-    int GetLuckModificator( std::string * ) const;
+    int GetLuckModificator( const std::string * ) const;
     u32 ActionToSirens( void );
 
     const HeroBase * GetCommander( void ) const;

@@ -21,16 +21,20 @@
  ***************************************************************************/
 
 #include <algorithm>
+#include <cassert>
 
 #include "game.h"
+#include "logging.h"
 #include "maps_fileinfo.h"
+#include "normal/ai_normal.h"
 #include "players.h"
 #include "race.h"
 #include "world.h"
 
 namespace
 {
-    Player * _players[KINGDOMMAX + 1] = {NULL};
+    const int playersSize = KINGDOMMAX + 1;
+    Player * _players[playersSize] = {NULL};
     int human_colors = 0;
 
     enum
@@ -83,8 +87,14 @@ Player::Player( int col )
     , race( Race::NONE )
     , friends( col )
     , id( World::GetUniq() )
+    , _ai( std::make_shared<AI::Normal>() )
 {
-    name = Color::String( color );
+    name = GetDefaultName();
+}
+
+std::string Player::GetDefaultName() const
+{
+    return Color::String( color );
 }
 
 const std::string & Player::GetName( void ) const
@@ -125,6 +135,11 @@ int Player::GetFriends( void ) const
 int Player::GetID( void ) const
 {
     return id;
+}
+
+std::string Player::GetPersonalityString() const
+{
+    return _ai->GetPersonalityString();
 }
 
 bool Player::isID( u32 id2 ) const
@@ -223,14 +238,22 @@ StreamBase & operator<<( StreamBase & msg, const Player & player )
 {
     const BitModes & modes = player;
 
-    return msg << modes << player.id << player.control << player.color << player.race << player.friends << player.name << player.focus;
+    assert( player._ai != nullptr );
+    msg << modes << player.id << player.control << player.color << player.race << player.friends << player.name << player.focus << *player._ai;
+    return msg;
 }
 
 StreamBase & operator>>( StreamBase & msg, Player & player )
 {
     BitModes & modes = player;
 
-    return msg >> modes >> player.id >> player.control >> player.color >> player.race >> player.friends >> player.name >> player.focus;
+    msg >> modes >> player.id >> player.control >> player.color >> player.race >> player.friends >> player.name >> player.focus;
+    if ( Game::GetLoadVersion() >= FORMAT_VERSION_091_RELEASE ) {
+        assert( player._ai );
+        msg >> *player._ai;
+    }
+
+    return msg;
 }
 
 Players::Players()
@@ -269,7 +292,7 @@ void Players::Init( int colors )
         _players[Color::GetIndex( *it )] = back();
     }
 
-    DEBUG( DBG_GAME, DBG_INFO, "Players: " << String() );
+    DEBUG_LOG( DBG_GAME, DBG_INFO, "Players: " << String() );
 }
 
 void Players::Init( const Maps::FileInfo & fi )
@@ -301,13 +324,19 @@ void Players::Init( const Maps::FileInfo & fi )
         if ( first )
             first->SetControl( CONTROL_HUMAN );
 
-        DEBUG( DBG_GAME, DBG_INFO, "Players: " << String() );
+        DEBUG_LOG( DBG_GAME, DBG_INFO, "Players: " << String() );
     }
     else {
-        DEBUG( DBG_GAME, DBG_INFO,
-               "Players: "
-                   << "unknown colors" );
+        DEBUG_LOG( DBG_GAME, DBG_INFO,
+                   "Players: "
+                       << "unknown colors" );
     }
+}
+
+void Players::Set( const int color, Player * player )
+{
+    assert( color >= 0 && color < playersSize );
+    _players[color] = player;
 }
 
 Player * Players::Get( int color )
@@ -410,7 +439,7 @@ void Players::SetStartGame( void )
     current_color = Color::NONE;
     human_colors = Color::NONE;
 
-    DEBUG( DBG_GAME, DBG_INFO, String() );
+    DEBUG_LOG( DBG_GAME, DBG_INFO, String() );
 }
 
 int Players::HumanColors( void )
@@ -446,11 +475,11 @@ std::string Players::String( void ) const
 
         switch ( ( *it )->GetControl() ) {
         case CONTROL_AI | CONTROL_HUMAN:
-            os << "ai|human";
+            os << "ai|human, " << ( *it )->GetPersonalityString();
             break;
 
         case CONTROL_AI:
-            os << "ai";
+            os << "ai, " << ( *it )->GetPersonalityString();
             break;
 
         case CONTROL_HUMAN:
@@ -495,7 +524,7 @@ StreamBase & operator>>( StreamBase & msg, Players & players )
     for ( u32 ii = 0; ii < vcolors.size(); ++ii ) {
         Player * player = new Player();
         msg >> *player;
-        _players[Color::GetIndex( player->GetColor() )] = player;
+        Players::Set( Color::GetIndex( player->GetColor() ), player );
         players.push_back( player );
     }
 

@@ -24,14 +24,30 @@
 #include <string>
 #include <vector>
 
-#include "agg.h"
+#include "agg_image.h"
 #include "castle.h"
 #include "cursor.h"
 #include "dialog.h"
 #include "game.h"
+#include "icn.h"
 #include "mageguild.h"
 #include "race.h"
 #include "text.h"
+
+namespace
+{
+    class RowSpells
+    {
+    public:
+        RowSpells( const Point &, const Castle &, int );
+        void Redraw( void );
+        bool QueueEventProcessing( void );
+
+    private:
+        Rects coords;
+        SpellStorage spells;
+    };
+}
 
 RowSpells::RowSpells( const Point & pos, const Castle & castle, int lvl )
 {
@@ -96,7 +112,7 @@ void RowSpells::Redraw( void )
 
             fheroes2::Blit( icon, display, dst.x + 3 + ( dst.w - icon.width() ) / 2, dst.y + 31 - icon.height() / 2 );
 
-            TextBox text( std::string( spell.GetName() ) + " [" + GetString( spell.SpellPoint( NULL ) ) + "]", Font::SMALL, 78 );
+            TextBox text( std::string( spell.GetName() ) + " [" + std::to_string( spell.SpellPoint( NULL ) ) + "]", Font::SMALL, 78 );
             text.Blit( dst.x + 18, dst.y + 55 );
         }
     }
@@ -106,7 +122,7 @@ bool RowSpells::QueueEventProcessing( void )
 {
     fheroes2::Display & display = fheroes2::Display::instance();
     LocalEvent & le = LocalEvent::Get();
-    Cursor & cursor = Cursor::Get();
+    const Cursor & cursor = Cursor::Get();
 
     const s32 index = coords.GetIndex( le.GetMouseCursor() );
 
@@ -127,11 +143,15 @@ bool RowSpells::QueueEventProcessing( void )
 void Castle::OpenMageGuild( const CastleHeroes & heroes )
 {
     fheroes2::Display & display = fheroes2::Display::instance();
-    Cursor & cursor = Cursor::Get();
+    const Cursor & cursor = Cursor::Get();
     cursor.Hide();
 
-    Dialog::FrameBorder frameborder( Size( fheroes2::Display::DEFAULT_WIDTH, fheroes2::Display::DEFAULT_HEIGHT ) );
-    const Point & cur_pt = frameborder.GetArea();
+    const fheroes2::ImageRestorer restorer( display, ( display.width() - fheroes2::Display::DEFAULT_WIDTH ) / 2,
+                                            ( display.height() - fheroes2::Display::DEFAULT_HEIGHT ) / 2, fheroes2::Display::DEFAULT_WIDTH,
+                                            fheroes2::Display::DEFAULT_HEIGHT );
+
+    const Point cur_pt( restorer.x(), restorer.y() );
+    fheroes2::Point dst_pt( cur_pt.x, cur_pt.y );
 
     fheroes2::Blit( fheroes2::AGG::GetICN( ICN::STONEBAK, 0 ), display, cur_pt.x, cur_pt.y );
 

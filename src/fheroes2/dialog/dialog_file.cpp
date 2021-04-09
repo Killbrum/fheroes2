@@ -20,11 +20,13 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
-#include "agg.h"
+#include "agg_image.h"
 #include "cursor.h"
 #include "dialog.h"
 #include "game.h"
 #include "game_interface.h"
+#include "icn.h"
+#include "localevent.h"
 #include "settings.h"
 #include "text.h"
 
@@ -82,14 +84,12 @@ int Dialog::FileOptions( void )
             }
         }
         else if ( le.MouseClickLeft( buttonLoad.area() ) ) {
-            if ( ListFiles::IsEmpty( Settings::GetSaveDir(), ".sav", false ) ) {
+            if ( ListFiles::IsEmpty( Game::GetSaveDir(), Game::GetSaveFileExtension(), false ) ) {
                 Dialog::Message( _( "Load Game" ), _( "No save files to load." ), Font::BIG, Dialog::OK );
             }
             else {
-                if ( Interface::Basic::Get().EventLoadGame() == Game::LOADGAME ) {
-                    result = Game::LOADGAME;
-                    break;
-                }
+                result = Interface::Basic::Get().EventLoadGame();
+                break;
             }
         }
         else if ( le.MouseClickLeft( buttonSave.area() ) ) {
@@ -97,7 +97,7 @@ int Dialog::FileOptions( void )
             break;
         }
         else if ( le.MouseClickLeft( buttonQuit.area() ) ) {
-            if ( Interface::Basic::Get().EventExit() == Game::QUITGAME ) {
+            if ( Interface::Basic::EventExit() == Game::QUITGAME ) {
                 result = Game::QUITGAME;
                 break;
             }

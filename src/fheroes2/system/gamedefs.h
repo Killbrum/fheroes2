@@ -22,19 +22,8 @@
 #ifndef H2GAMEDEFS_H
 #define H2GAMEDEFS_H
 
-#include "engine.h"
-
-#define MAJOR_VERSION 0
-#define MINOR_VERSION 8
-#define INTERMEDIATE_VERSION 3
-
-#ifdef WITH_XML
-#include "tinyxml.h"
-#endif
-
-#include "translations.h"
-#define _( s ) Translation::gettext( s )
-#define _n( a, b, c ) Translation::ngettext( a, b, c )
+#include "tools.h"
+#include "types.h"
 
 // hardcore defines: kingdom
 #define KINGDOMMAX 6

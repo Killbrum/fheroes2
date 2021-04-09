@@ -33,10 +33,14 @@
 #include "game.h"
 #include "game_io.h"
 #include "game_over.h"
+#include "logging.h"
 #include "maps_fileinfo.h"
 #include "race.h"
 #include "settings.h"
-#include "world.h"
+
+#ifdef WITH_XML
+#include "tinyxml.h"
+#endif
 
 #define LENGTHNAME 16
 #define LENGTHDESCRIPTION 143
@@ -204,9 +208,9 @@ bool Maps::FileInfo::ReadMAP( const std::string & filename )
     if ( doc.LoadFile( filename.c_str() ) && NULL != ( xml_map = doc.FirstChildElement( "map" ) ) ) {
         const TiXmlElement * xml_header = xml_map->FirstChildElement( "header" );
         if ( !xml_header ) {
-            DEBUG( DBG_GAME, DBG_WARN,
-                   filename << ", "
-                            << "header not found" );
+            DEBUG_LOG( DBG_GAME, DBG_WARN,
+                       filename << ", "
+                                << "header not found" );
             return false;
         }
 
@@ -362,27 +366,28 @@ bool Maps::FileInfo::ReadMAP( const std::string & filename )
                 return true;
             }
             else {
-                DEBUG( DBG_GAME, DBG_WARN,
-                       filename << ", "
-                                << "incorrect header decode"
-                                << ", "
-                                << "size: " << bytes.size() );
+                DEBUG_LOG( DBG_GAME, DBG_WARN,
+                           filename << ", "
+                                    << "incorrect header decode"
+                                    << ", "
+                                    << "size: " << bytes.size() );
             }
         }
         else {
-            DEBUG( DBG_GAME, DBG_WARN,
-                   filename << ", "
-                            << "incorrect info" );
+            DEBUG_LOG( DBG_GAME, DBG_WARN,
+                       filename << ", "
+                                << "incorrect info" );
         }
 
         return false;
     }
     else
-        VERBOSE( filename << ": " << doc.ErrorDesc() );
+        VERBOSE_LOG( filename << ": " << doc.ErrorDesc() );
 #else
-    DEBUG( DBG_GAME, DBG_WARN,
-           filename << ", "
-                    << "unsupported map format" );
+    (void)filename;
+    DEBUG_LOG( DBG_GAME, DBG_WARN,
+               filename << ", "
+                        << "unsupported map format" );
 #endif
     return false;
 }
@@ -393,7 +398,7 @@ bool Maps::FileInfo::ReadMP2( const std::string & filename )
     StreamFile fs;
 
     if ( !fs.open( filename, "rb" ) ) {
-        DEBUG( DBG_GAME, DBG_WARN, "file not found " << filename );
+        DEBUG_LOG( DBG_GAME, DBG_WARN, "file not found " << filename );
         return false;
     }
 
@@ -406,7 +411,7 @@ bool Maps::FileInfo::ReadMP2( const std::string & filename )
 
     // magic byte
     if ( fs.getBE32() != 0x5C000000 ) {
-        DEBUG( DBG_GAME, DBG_WARN, "incorrect maps file " << filename );
+        DEBUG_LOG( DBG_GAME, DBG_WARN, "incorrect maps file " << filename );
         return false;
     }
 
@@ -460,9 +465,9 @@ bool Maps::FileInfo::ReadMP2( const std::string & filename )
     fs.seek( 0x1D );
     conditions_wins = fs.get();
     // data wins
-    comp_also_wins = fs.get();
+    comp_also_wins = ( fs.get() != 0 );
     // data wins
-    allow_normal_victory = fs.get();
+    allow_normal_victory = ( fs.get() != 0 );
     // data wins
     wins1 = fs.getLE16();
     // data wins
@@ -709,14 +714,13 @@ std::string Maps::FileInfo::String( void ) const
 
 ListFiles GetMapsFiles( const char * suffix )
 {
-    const Settings & conf = Settings::Get();
-    ListFiles maps = conf.GetListFiles( "maps", suffix );
-    const ListDirs & list = conf.GetMapsParams();
+    ListFiles maps = Settings::GetListFiles( "maps", suffix );
+    const ListDirs & list = Settings::Get().GetMapsParams();
 
     if ( !list.empty() ) {
         for ( ListDirs::const_iterator it = list.begin(); it != list.end(); ++it )
             if ( *it != "maps" )
-                maps.Append( conf.GetListFiles( *it, suffix ) );
+                maps.Append( Settings::GetListFiles( *it, suffix ) );
     }
 
     return maps;

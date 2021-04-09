@@ -19,8 +19,10 @@
  *   Free Software Foundation, Inc.,                                       *
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
-#if defined( _MSC_VER ) || defined( __MINGW32CE__ ) || defined( __MINGW32__ )
+#if defined( _MSC_VER ) || defined( __MINGW32__ )
 #include <windows.h>
+#elif defined( FHEROES2_VITA )
+#include <psp2/io/dirent.h>
 #else
 #include <dirent.h>
 #endif
@@ -28,15 +30,32 @@
 #include "dir.h"
 #include "system.h"
 #include "tools.h"
+#include <cstring>
+#if defined( __SWITCH__ )
+#include <strings.h> // for strcasecmp
+#endif
 
-void ListFiles::Append( const ListFiles & list )
+namespace fheroes2
 {
-    insert( end(), list.begin(), list.end() );
+    void AddOSSpecificDirectories( ListDirs & dirs )
+    {
+#if defined( FHEROES2_VITA )
+        dirs.emplace_back( "ux0:app/FHOMM0002" );
+        dirs.emplace_back( "ux0:data/fheroes2" );
+#else
+        (void)dirs;
+#endif
+    }
+}
+
+void ListFiles::Append( const ListFiles & files )
+{
+    insert( end(), files.begin(), files.end() );
 }
 
 void ListFiles::ReadDir( const std::string & path, const std::string & filter, bool sensitive )
 {
-#if defined( _MSC_VER ) || defined( __MINGW32CE__ ) || defined( __MINGW32__ )
+#if defined( _MSC_VER ) || defined( __MINGW32__ )
     (void)sensitive;
 
     std::string pattern( path + "\\*" + filter );
@@ -48,6 +67,39 @@ void ListFiles::ReadDir( const std::string & path, const std::string & filter, b
         } while ( FindNextFile( hFind, &data ) != 0 );
         FindClose( hFind );
     }
+#elif defined( FHEROES2_VITA )
+    // open the directory
+    const int uid = sceIoDopen( path.c_str() );
+    if ( uid <= 0 )
+        return;
+
+    // iterate over the directory for files, print name and size of array (always 256)
+    // this means you use strlen() to get length of file name
+    SceIoDirent dir;
+
+    while ( sceIoDread( uid, &dir ) > 0 ) {
+        std::string fullname = System::ConcatePath( path, dir.d_name );
+
+        // if not regular file
+        if ( !SCE_S_ISREG( dir.d_stat.st_mode ) )
+            continue;
+
+        if ( !filter.empty() ) {
+            const std::string filename( dir.d_name );
+
+            if ( sensitive ) {
+                if ( std::string::npos == filename.find( filter ) )
+                    continue;
+            }
+            else if ( std::string::npos == StringLower( filename ).find( StringLower( filter ) ) )
+                continue;
+        }
+
+        emplace_back( std::move( fullname ) );
+    }
+
+    // clean up
+    sceIoDclose( uid );
 #else
     std::string correctedPath;
     if ( !System::GetCaseInsensitivePath( path, correctedPath ) )

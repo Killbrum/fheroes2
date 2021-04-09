@@ -21,7 +21,6 @@
  ***************************************************************************/
 
 #include <algorithm>
-#include <climits>
 #include <cmath>
 #include <iterator>
 #include <sstream>
@@ -33,7 +32,7 @@ Point::Point()
     , y( 0 )
 {}
 
-Point::Point( s16 px, s16 py )
+Point::Point( int16_t px, int16_t py )
     : x( px )
     , y( py )
 {}
@@ -96,7 +95,7 @@ Point Point::rotate( double angle ) const
     const double sinValue = sin( angle );
     const double cosValue = cos( angle );
 
-    return Point( x * cosValue - y * sinValue, x * sinValue + y * cosValue );
+    return Point( static_cast<int16_t>( x * cosValue - y * sinValue ), static_cast<int16_t>( x * sinValue + y * cosValue ) );
 }
 
 double Point::getAngle( const Point & point ) const
@@ -110,8 +109,8 @@ Size::Size( u16 width, u16 height )
 {}
 
 Size::Size( const Point & pt )
-    : w( std::abs( pt.x ) )
-    , h( std::abs( pt.y ) )
+    : w( pt.x < 0 ? -pt.x : pt.x )
+    , h( pt.y < 0 ? -pt.y : pt.y )
 {}
 
 bool Size::operator==( const Size & sz ) const
@@ -152,7 +151,7 @@ Size Size::operator-( const Size & sz ) const
 
 Rect::Rect() {}
 
-Rect::Rect( s16 rx, s16 ry, u16 rw, u16 rh )
+Rect::Rect( int16_t rx, int16_t ry, u16 rw, u16 rh )
     : Point( rx, ry )
     , Size( rw, rh )
 {}
@@ -241,62 +240,9 @@ bool Rect::operator&( const Rect & rt ) const
     return !( x > rt.x + rt.w || x + w < rt.x || y > rt.y + rt.h || y + h < rt.y );
 }
 
-Rect Rect::operator^( const Rect & other ) const
-{
-    Rect temp = other;
-    if ( temp.x < x ) {
-        const int16_t diff = x - temp.x;
-        temp.x = x;
-        temp.w -= diff;
-    }
-    if ( temp.y < y ) {
-        const int16_t diff = y - temp.y;
-        temp.y = y;
-        temp.h -= diff;
-    }
-
-    if ( temp.x > x + w || temp.y > y + h )
-        return Rect();
-
-    if ( temp.x + temp.w > x + w ) {
-        const int16_t diff = temp.x + temp.w - ( x + w );
-        temp.w -= diff;
-    }
-
-    if ( temp.y + temp.h > y + h ) {
-        const int16_t diff = temp.y + temp.h - ( y + h );
-        temp.h -= diff;
-    }
-
-    return temp;
-}
-
 const Point & Rect::getPosition() const
 {
     return *this;
-}
-
-Rect Points::GetRect( void ) const
-{
-    Rect res;
-
-    if ( 1 < size() ) {
-        res = Rect::Get( at( 0 ), at( 1 ) );
-
-        for ( const_iterator it = begin() + 2; it != end(); ++it ) {
-            if ( ( *it ).x < res.x )
-                res.x = ( *it ).x;
-            else if ( ( *it ).x > res.x + res.w )
-                res.w = ( *it ).x - res.x + 1;
-
-            if ( ( *it ).y < res.y )
-                res.y = ( *it ).y;
-            else if ( ( *it ).y > res.y + res.h )
-                res.h = ( *it ).y - res.y + 1;
-        }
-    }
-
-    return res;
 }
 
 Rect Rects::GetRect( void ) const

@@ -20,13 +20,17 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
-#include "agg.h"
+#include "agg_image.h"
+#include "audio_mixer.h"
 #include "audio_music.h"
 #include "cursor.h"
 #include "dialog.h"
 #include "game.h"
 #include "game_interface.h"
+#include "icn.h"
+#include "localevent.h"
 #include "settings.h"
+#include "system.h"
 #include "text.h"
 #include "ui_button.h"
 
@@ -44,7 +48,6 @@ int Dialog::SystemOptions( void )
     // cursor
     Cursor & cursor = Cursor::Get();
     const int oldcursor = cursor.Themes();
-    cursor.Hide();
     cursor.SetThemes( cursor.POINTER );
 
     const bool isEvilInterface = conf.ExtGameEvilInterface();
@@ -67,15 +70,15 @@ int Dialog::SystemOptions( void )
     const fheroes2::Point optionStep( 92, 110 );
 
     std::vector<fheroes2::Rect> rects;
-    rects.push_back( fheroes2::Rect( optionOffset.x, optionOffset.y, optionSprite.width(), optionSprite.height() ) );
-    rects.push_back( fheroes2::Rect( optionOffset.x + optionStep.x, optionOffset.y, optionSprite.width(), optionSprite.height() ) );
-    rects.push_back( fheroes2::Rect( optionOffset.x + 2 * optionStep.x, optionOffset.y, optionSprite.width(), optionSprite.height() ) );
-    rects.push_back( fheroes2::Rect( optionOffset.x, optionOffset.y + optionStep.y, optionSprite.width(), optionSprite.height() ) );
-    rects.push_back( fheroes2::Rect( optionOffset.x + optionStep.x, optionOffset.y + optionStep.y, optionSprite.width(), optionSprite.height() ) );
-    rects.push_back( fheroes2::Rect( optionOffset.x + 2 * optionStep.x, optionOffset.y + optionStep.y, optionSprite.width(), optionSprite.height() ) );
-    rects.push_back( fheroes2::Rect( optionOffset.x, optionOffset.y + 2 * optionStep.y, optionSprite.width(), optionSprite.height() ) );
-    rects.push_back( fheroes2::Rect( optionOffset.x + optionStep.x, optionOffset.y + 2 * optionStep.y, optionSprite.width(), optionSprite.height() ) );
-    rects.push_back( fheroes2::Rect( optionOffset.x + 2 * optionStep.x, optionOffset.y + 2 * optionStep.y, optionSprite.width(), optionSprite.height() ) ); // not in use
+    rects.emplace_back( optionOffset.x, optionOffset.y, optionSprite.width(), optionSprite.height() );
+    rects.emplace_back( optionOffset.x + optionStep.x, optionOffset.y, optionSprite.width(), optionSprite.height() );
+    rects.emplace_back( optionOffset.x + 2 * optionStep.x, optionOffset.y, optionSprite.width(), optionSprite.height() );
+    rects.emplace_back( optionOffset.x, optionOffset.y + optionStep.y, optionSprite.width(), optionSprite.height() );
+    rects.emplace_back( optionOffset.x + optionStep.x, optionOffset.y + optionStep.y, optionSprite.width(), optionSprite.height() );
+    rects.emplace_back( optionOffset.x + 2 * optionStep.x, optionOffset.y + optionStep.y, optionSprite.width(), optionSprite.height() );
+    rects.emplace_back( optionOffset.x, optionOffset.y + 2 * optionStep.y, optionSprite.width(), optionSprite.height() );
+    rects.emplace_back( optionOffset.x + optionStep.x, optionOffset.y + 2 * optionStep.y, optionSprite.width(), optionSprite.height() );
+    rects.emplace_back( optionOffset.x + 2 * optionStep.x, optionOffset.y + 2 * optionStep.y, optionSprite.width(), optionSprite.height() );
 
     const fheroes2::Rect & rect1 = rects[0];
     const fheroes2::Rect & rect2 = rects[1];
@@ -85,6 +88,7 @@ int Dialog::SystemOptions( void )
     const fheroes2::Rect & rect6 = rects[5];
     const fheroes2::Rect & rect7 = rects[6];
     const fheroes2::Rect & rect8 = rects[7];
+    const fheroes2::Rect & rect9 = rects[8];
 
     DrawSystemInfo( rects );
 
@@ -94,12 +98,13 @@ int Dialog::SystemOptions( void )
     fheroes2::Button buttonOkay( buttonOffset.x, buttonOffset.y, isEvilInterface ? ICN::SPANBTNE : ICN::SPANBTN, 0, 1 );
     buttonOkay.draw();
 
-    cursor.Show();
     display.render();
 
     int result = 0;
     bool redraw = false;
     bool saveConfig = false;
+
+    const bool externalMusicSupported = System::IsDirectory( "music" );
 
     // dialog menu loop
     while ( le.HandleEvents() ) {
@@ -129,6 +134,8 @@ int Dialog::SystemOptions( void )
             int type = conf.MusicType() + 1;
             // If there's no expansion files we skip this option
             if ( type == MUSIC_MIDI_EXPANSION && !conf.PriceLoyaltyVersion() )
+                ++type;
+            if ( type == MUSIC_EXTERNAL && !externalMusicSupported )
                 ++type;
             // CD music is currently not implemented correctly even on SDL1; remove this when done
             if ( type == MUSIC_CDROM )
@@ -182,12 +189,30 @@ int Dialog::SystemOptions( void )
             saveConfig = true;
         }
 
+        // toggle manual/auto battles
+        if ( le.MouseClickLeft( rect9 ) ) {
+            if ( conf.BattleAutoResolve() ) {
+                if ( conf.BattleAutoSpellcast() ) {
+                    conf.setBattleAutoSpellcast( false );
+                }
+                else {
+                    conf.setBattleAutoResolve( false );
+                }
+            }
+            else {
+                conf.setBattleAutoResolve( true );
+                conf.setBattleAutoSpellcast( true );
+            }
+
+            result |= 0x20;
+            redraw = true;
+            saveConfig = true;
+        }
+
         if ( redraw ) {
-            cursor.Hide();
             fheroes2::Blit( dialog, display, dialogArea.x, dialogArea.y );
             DrawSystemInfo( rects );
             buttonOkay.draw();
-            cursor.Show();
             display.render();
             redraw = false;
         }
@@ -207,7 +232,7 @@ int Dialog::SystemOptions( void )
 void Dialog::DrawSystemInfo( const std::vector<fheroes2::Rect> & rects )
 {
     fheroes2::Display & display = fheroes2::Display::instance();
-    Settings & conf = Settings::Get();
+    const Settings & conf = Settings::Get();
 
     std::string str;
     Text text;
@@ -223,7 +248,7 @@ void Dialog::DrawSystemInfo( const std::vector<fheroes2::Rect> & rects )
     text.Blit( rect1.x + ( rect1.w - text.w() ) / 2, rect1.y - text.h() - textOffset );
 
     if ( conf.Music() && conf.MusicVolume() )
-        str = GetString( conf.MusicVolume() );
+        str = std::to_string( conf.MusicVolume() );
     else
         str = _( "off" );
     text.Set( str );
@@ -238,7 +263,7 @@ void Dialog::DrawSystemInfo( const std::vector<fheroes2::Rect> & rects )
     text.Blit( rect2.x + ( rect2.w - text.w() ) / 2, rect2.y - text.h() - textOffset );
 
     if ( conf.Sound() && conf.SoundVolume() )
-        str = GetString( conf.SoundVolume() );
+        str = std::to_string( conf.SoundVolume() );
     else
         str = _( "off" );
     text.Set( str, Font::SMALL );
@@ -279,7 +304,7 @@ void Dialog::DrawSystemInfo( const std::vector<fheroes2::Rect> & rects )
     text.Blit( rect4.x + ( rect4.w - text.w() ) / 2, rect4.y - text.h() - textOffset );
 
     if ( heroSpeed )
-        str = GetString( heroSpeed );
+        str = std::to_string( heroSpeed );
     else
         str = _( "off" );
     text.Set( str );
@@ -296,7 +321,7 @@ void Dialog::DrawSystemInfo( const std::vector<fheroes2::Rect> & rects )
     text.Blit( rect5.x + ( rect5.w - text.w() ) / 2, rect5.y - text.h() - textOffset );
 
     if ( aiSpeed )
-        str = GetString( aiSpeed );
+        str = std::to_string( aiSpeed );
     else
         str = _( "off" );
     text.Set( str );
@@ -311,7 +336,7 @@ void Dialog::DrawSystemInfo( const std::vector<fheroes2::Rect> & rects )
     text.Set( str );
     text.Blit( rect6.x + ( rect6.w - text.w() ) / 2, rect5.y - text.h() - textOffset );
 
-    str = GetString( conf.ScrollSpeed() );
+    str = std::to_string( conf.ScrollSpeed() );
     text.Set( str );
     text.Blit( rect6.x + ( rect6.w - text.w() ) / 2, rect6.y + rect6.h + textOffset );
 
@@ -344,16 +369,29 @@ void Dialog::DrawSystemInfo( const std::vector<fheroes2::Rect> & rects )
     }
     else {
         fheroes2::Blit( sprite8, display, rect8.x, rect8.y );
-        fheroes2::Blit( sprite81, 13, 13, display, rect8.x + 13, rect8.y + 13, 38, 38 );
+        fheroes2::Blit( sprite81, 14, 14, display, rect8.x + 14, rect8.y + 14, 37, 37 );
         str = _( "Show" );
     }
     text.Set( str );
     text.Blit( rect8.x + ( rect8.w - text.w() ) / 2, rect8.y + rect8.h + textOffset );
 
-    // unused
-    // const fheroes2::Sprite & sprite9 = fheroes2::AGG::GetICN(ICN::SPANEL, 17);
+    // auto-battles
     const Rect & rect9 = rects[8];
-    str = "unused";
+    str = _( "Battles" );
+    text.Set( str );
+    text.Blit( rect9.x + ( rect9.w - text.w() ) / 2, rect9.y - text.h() - textOffset );
+
+    if ( conf.BattleAutoResolve() ) {
+        const bool spellcast = conf.BattleAutoSpellcast();
+        str = spellcast ? _( "Auto Resolve" ) : str = _( "Auto, No Spells" );
+
+        const fheroes2::Sprite & sprite9 = fheroes2::AGG::GetICN( ICN::CSPANEL, spellcast ? 7 : 6 );
+        fheroes2::Blit( sprite9, display, rect9.x, rect9.y );
+    }
+    else {
+        str = _( "Manual" );
+        fheroes2::Blit( fheroes2::AGG::GetICN( ICN::SPANEL, 18 ), display, rect9.x, rect9.y );
+    }
     text.Set( str );
     text.Blit( rect9.x + ( rect9.w - text.w() ) / 2, rect9.y + rect9.h + textOffset );
 }

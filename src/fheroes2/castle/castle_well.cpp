@@ -22,31 +22,18 @@
 
 #include <string>
 
-#include "agg.h"
+#include "agg_image.h"
 #include "battle_cell.h"
 #include "castle.h"
 #include "cursor.h"
 #include "dialog.h"
 #include "game.h"
+#include "icn.h"
 #include "kingdom.h"
 #include "resource.h"
 #include "speed.h"
 #include "text.h"
 #include "world.h"
-
-struct dwelling_t : public std::pair<u32, u32>
-{
-    dwelling_t( u32 type, u32 count )
-        : std::pair<u32, u32>( type, count ){};
-};
-
-struct dwellings_t : public std::vector<dwelling_t>
-{
-    dwellings_t()
-    {
-        reserve( 6 );
-    };
-};
 
 u32 HowManyRecruitMonster( const Castle & castle, u32 dw, const Funds & add, Funds & res )
 {
@@ -77,8 +64,11 @@ void Castle::OpenWell( void )
     Cursor & cursor = Cursor::Get();
     cursor.Hide();
 
-    Dialog::FrameBorder frameborder( Size( fheroes2::Display::DEFAULT_WIDTH, fheroes2::Display::DEFAULT_HEIGHT ) );
-    const Point cur_pt = frameborder.GetArea();
+    const fheroes2::ImageRestorer restorer( display, ( display.width() - fheroes2::Display::DEFAULT_WIDTH ) / 2,
+                                            ( display.height() - fheroes2::Display::DEFAULT_HEIGHT ) / 2, fheroes2::Display::DEFAULT_WIDTH,
+                                            fheroes2::Display::DEFAULT_HEIGHT );
+
+    const Point cur_pt( restorer.x(), restorer.y() );
     fheroes2::Point dst_pt( cur_pt.x, cur_pt.y );
 
     // button exit
@@ -100,12 +90,12 @@ void Castle::OpenWell( void )
     buttonExit.draw();
 
     std::vector<RandomMonsterAnimation> monsterAnimInfo;
-    monsterAnimInfo.push_back( RandomMonsterAnimation( Monster( race, DWELLING_MONSTER1 ) ) );
-    monsterAnimInfo.push_back( RandomMonsterAnimation( Monster( race, GetActualDwelling( DWELLING_MONSTER2 ) ) ) );
-    monsterAnimInfo.push_back( RandomMonsterAnimation( Monster( race, GetActualDwelling( DWELLING_MONSTER3 ) ) ) );
-    monsterAnimInfo.push_back( RandomMonsterAnimation( Monster( race, GetActualDwelling( DWELLING_MONSTER4 ) ) ) );
-    monsterAnimInfo.push_back( RandomMonsterAnimation( Monster( race, GetActualDwelling( DWELLING_MONSTER5 ) ) ) );
-    monsterAnimInfo.push_back( RandomMonsterAnimation( Monster( race, GetActualDwelling( DWELLING_MONSTER6 ) ) ) );
+    monsterAnimInfo.emplace_back( Monster( race, DWELLING_MONSTER1 ) );
+    monsterAnimInfo.emplace_back( Monster( race, GetActualDwelling( DWELLING_MONSTER2 ) ) );
+    monsterAnimInfo.emplace_back( Monster( race, GetActualDwelling( DWELLING_MONSTER3 ) ) );
+    monsterAnimInfo.emplace_back( Monster( race, GetActualDwelling( DWELLING_MONSTER4 ) ) );
+    monsterAnimInfo.emplace_back( Monster( race, GetActualDwelling( DWELLING_MONSTER5 ) ) );
+    monsterAnimInfo.emplace_back( Monster( race, GetActualDwelling( DWELLING_MONSTER6 ) ) );
 
     WellRedrawInfoArea( cur_pt, monsterAnimInfo );
 
@@ -148,7 +138,7 @@ void Castle::OpenWell( void )
                     total += cur;
                     str.append( ms.GetPluralName( can_recruit ) );
                     str.append( " - " );
-                    str.append( GetString( can_recruit ) );
+                    str.append( std::to_string( can_recruit ) );
                     str.append( "\n" );
                 }
             }
@@ -202,7 +192,7 @@ void Castle::OpenWell( void )
     }
 }
 
-void Castle::WellRedrawInfoArea( const Point & cur_pt, const std::vector<RandomMonsterAnimation> & monsterAnimInfo )
+void Castle::WellRedrawInfoArea( const Point & cur_pt, const std::vector<RandomMonsterAnimation> & monsterAnimInfo ) const
 {
     fheroes2::Display & display = fheroes2::Display::instance();
     fheroes2::Blit( fheroes2::AGG::GetICN( ICN::WELLBKG, 0 ), display, cur_pt.x, cur_pt.y );
@@ -213,7 +203,8 @@ void Castle::WellRedrawInfoArea( const Point & cur_pt, const std::vector<RandomM
 
     const fheroes2::Sprite & button = fheroes2::AGG::GetICN( ICN::BUYMAX, 0 );
     const fheroes2::Rect src_rt( 0, 461, button.width(), 19 );
-    fheroes2::Blit( fheroes2::AGG::GetICN( ICN::WELLBKG, 0 ), src_rt.x, src_rt.y, display, cur_pt.x + button.width(), cur_pt.y + 461, src_rt.width, src_rt.height );
+    fheroes2::Blit( fheroes2::AGG::GetICN( ICN::WELLBKG, 0 ), src_rt.x, src_rt.y, display, cur_pt.x + button.width() + 1, cur_pt.y + 461, src_rt.width, src_rt.height );
+    fheroes2::Fill( display, cur_pt.x + button.width(), cur_pt.y + 461, 1, src_rt.height, 0 );
 
     text.Set( _( "Town Population Information and Statistics" ), Font::BIG );
     dst_pt.x = cur_pt.x + 315 - text.w() / 2;
@@ -300,25 +291,25 @@ void Castle::WellRedrawInfoArea( const Point & cur_pt, const std::vector<RandomM
         text.Blit( dst_pt.x, dst_pt.y );
         // attack
         std::string str;
-        str = std::string( _( "Attack" ) ) + ": " + GetString( monster.GetAttack() );
+        str = std::string( _( "Attack" ) ) + ": " + std::to_string( monster.GetAttack() );
         text.Set( str );
         dst_pt.x = pt.x + 268 - text.w() / 2;
         dst_pt.y = pt.y + 22;
         text.Blit( dst_pt.x, dst_pt.y );
         // defense
-        str = std::string( _( "Defense" ) ) + ": " + GetString( monster.GetDefense() );
+        str = std::string( _( "Defense" ) ) + ": " + std::to_string( monster.GetDefense() );
         text.Set( str );
         dst_pt.x = pt.x + 268 - text.w() / 2;
         dst_pt.y = pt.y + 34;
         text.Blit( dst_pt.x, dst_pt.y );
         // damage
-        str = std::string( _( "Damage" ) ) + ": " + GetString( monster.GetDamageMin() ) + "-" + GetString( monster.GetDamageMax() );
+        str = std::string( _( "Damage" ) ) + ": " + std::to_string( monster.GetDamageMin() ) + "-" + std::to_string( monster.GetDamageMax() );
         text.Set( str );
         dst_pt.x = pt.x + 268 - text.w() / 2;
         dst_pt.y = pt.y + 46;
         text.Blit( dst_pt.x, dst_pt.y );
         // hp
-        str = std::string( _( "HP" ) ) + ": " + GetString( monster.GetHitPoints() );
+        str = std::string( _( "HP" ) ) + ": " + std::to_string( monster.GetHitPoints() );
         text.Set( str );
         dst_pt.x = pt.x + 268 - text.w() / 2;
         dst_pt.y = pt.y + 58;
@@ -344,7 +335,7 @@ void Castle::WellRedrawInfoArea( const Point & cur_pt, const std::vector<RandomM
             dst_pt.x = pt.x + 268 - text.w() / 2;
             dst_pt.y = pt.y + 110;
             text.Blit( dst_pt.x, dst_pt.y );
-            str = std::string( "+ " ) + GetString( grown ) + " / " + _( "week" );
+            str = std::string( "+ " ) + std::to_string( grown ) + " / " + _( "week" );
             text.Set( str );
             dst_pt.x = pt.x + 268 - text.w() / 2;
             dst_pt.y = pt.y + 122;
@@ -355,7 +346,7 @@ void Castle::WellRedrawInfoArea( const Point & cur_pt, const std::vector<RandomM
             dst_pt.x = pt.x + 44;
             dst_pt.y = pt.y + 122;
             text.Blit( dst_pt.x, dst_pt.y );
-            text.Set( GetString( available ), Font::YELLOW_BIG );
+            text.Set( std::to_string( available ), Font::YELLOW_BIG );
             dst_pt.x = pt.x + 129 - text.w() / 2;
             dst_pt.y = pt.y + 119;
             text.Blit( dst_pt.x, dst_pt.y );

@@ -38,14 +38,16 @@ namespace Battle
     struct ArenaNode : public PathfindingNode
     {
         bool _isOpen = true;
+        bool _isLeftDirection = false;
 
         // ArenaNode uses different default values
         ArenaNode()
             : PathfindingNode( -1, MAX_MOVE_COST, 0 )
         {}
-        ArenaNode( int node, uint16_t cost, bool isOpen )
+        ArenaNode( int node, uint16_t cost, bool isOpen, bool isLeftDirection )
             : PathfindingNode( node, cost, 0 )
             , _isOpen( isOpen )
+            , _isLeftDirection( isLeftDirection )
         {}
         // Override the base version of the call to use proper values
         virtual void resetNode() override;
@@ -57,8 +59,15 @@ namespace Battle
         ArenaPathfinder();
         virtual void reset() override;
         void calculate( const Unit & unit );
-        virtual std::list<Route::Step> buildPath( int targetCell ) const override;
+        Indexes buildPath( int targetCell ) const;
+        Indexes findTwoMovesOverlap( int targetCell, uint32_t movementRange ) const;
         bool hexIsAccessible( int targetCell ) const;
         bool hexIsPassable( int targetCell ) const;
+        Indexes getAllAvailableMoves( uint32_t moveRange ) const;
+
+    private:
+        bool nodeIsPassable( const ArenaNode & node ) const;
+
+        Position _start;
     };
 }

@@ -32,6 +32,10 @@
 #include "resource.h"
 #include "skill.h"
 
+#ifdef WITH_XML
+#include "tinyxml.h"
+#endif
+
 class Heroes;
 class Spell;
 class Monster;
@@ -40,6 +44,11 @@ namespace MP2
 {
     struct mp2tile_t;
     struct mp2addon_t;
+}
+
+namespace Interface
+{
+    class GameArea;
 }
 
 namespace Maps
@@ -59,7 +68,11 @@ namespace Maps
         TilesAddon( const TilesAddon & ta );
         TilesAddon & operator=( const TilesAddon & ta );
 
-        bool isUniq( u32 ) const;
+        bool isUniq( const uint32_t id ) const
+        {
+            return uniq == id;
+        }
+
         bool isRoad() const;
         bool hasRoadFlag() const;
         bool isICN( int ) const;
@@ -107,15 +120,38 @@ namespace Maps
 
         void Init( s32, const MP2::mp2tile_t & );
 
-        s32 GetIndex( void ) const;
+        int32_t GetIndex() const
+        {
+            return maps_index;
+        }
+
         Point GetCenter( void ) const;
         int GetObject( bool ignoreObjectUnderHero = true ) const;
         uint8_t GetObjectTileset() const;
+
         uint8_t GetObjectSpriteIndex() const;
+        void SetObjectSpriteIndex( const uint8_t index );
+
         u32 GetObjectUID() const;
-        int GetQuantity1() const;
-        int GetQuantity2() const;
-        int GetQuantity3() const;
+
+        // Get Tile metadata field #1 (used for things like monster count or resource amount)
+        uint8_t GetQuantity1() const
+        {
+            return quantity1;
+        }
+
+        // Get Tile metadata field #2 (used for things like animations or resource type )
+        uint8_t GetQuantity2() const
+        {
+            return quantity2;
+        }
+
+        // Get third field containing Tile metadata (adventure spell ID)
+        uint8_t GetQuantity3() const
+        {
+            return quantity3;
+        }
+
         int GetPassable() const;
         int GetGround() const;
         bool isWater() const;
@@ -128,11 +164,11 @@ namespace Maps
         bool isObject( int obj ) const;
         bool hasSpriteAnimation() const;
         bool validateWaterRules( bool fromWater ) const;
-        bool isPassable( int direct, bool fromWater, bool skipfog ) const;
+        bool isPassable( int direct, bool fromWater, bool skipfog, const int heroColor ) const;
         bool isRoad() const;
         bool isStream( void ) const;
         bool isShadow( void ) const;
-        bool GoodForUltimateArtifact( void ) const;
+        bool GoodForUltimateArtifact() const;
 
         TilesAddon * FindAddonICN( int icn1, int level = -1, int index = -1 );
 
@@ -141,7 +177,12 @@ namespace Maps
 
         void SetTile( u32 sprite_index, u32 shape /* 0: none, 1 : vert, 2: horz, 3: both */ );
         void SetObject( int object );
-        void SetIndex( int );
+
+        void SetIndex( const uint32_t index )
+        {
+            maps_index = index;
+        }
+
         void setBoat( int direction );
         int getBoatDirection() const;
         void resetObjectSprite();
@@ -153,18 +194,20 @@ namespace Maps
         void UpdatePassable( void );
         void CaptureFlags32( int obj, int col );
 
-        void RedrawTile( fheroes2::Image & ) const;
-        static void RedrawEmptyTile( fheroes2::Image & dst, const Point & mp );
-        void RedrawBottom( fheroes2::Image & dst, bool isPuzzleDraw = false ) const;
-        void RedrawBottom4Hero( fheroes2::Image & ) const;
-        void RedrawTop( fheroes2::Image & dst ) const;
-        void RedrawTop4Hero( fheroes2::Image &, bool skip_ground ) const;
-        void RedrawObjects( fheroes2::Image & dst, bool isPuzzleDraw = false ) const;
-        void RedrawMonstersAndBoat( fheroes2::Image & dst, bool withShadow = true ) const;
+        void RedrawTile( fheroes2::Image & dst, const Rect & visibleTileROI, const Interface::GameArea & area ) const;
+        static void RedrawEmptyTile( fheroes2::Image & dst, const Point & mp, const Rect & visibleTileROI );
+        void RedrawBottom( fheroes2::Image & dst, const Rect & visibleTileROI, bool isPuzzleDraw, const Interface::GameArea & area ) const;
+        void RedrawBottom4Hero( fheroes2::Image & dst, const Rect & visibleTileROI, const Interface::GameArea & area ) const;
+        void RedrawTop( fheroes2::Image & dst, const Rect & visibleTileROI, const Interface::GameArea & area ) const;
+        void RedrawTop4Hero( fheroes2::Image & dst, const Rect & visibleTileROI, bool skip_ground, const Interface::GameArea & area ) const;
+        void RedrawObjects( fheroes2::Image & dst, bool isPuzzleDraw, const Interface::GameArea & area ) const;
+        void RedrawBoat( fheroes2::Image & dst, const Rect & visibleTileROI, const Interface::GameArea & area ) const;
+        void RedrawBoatShadow( fheroes2::Image & dst, const Rect & visibleTileROI, const Interface::GameArea & area ) const;
+        void RedrawMonster( fheroes2::Image & dst, const Rect & visibleTileROI, const Interface::GameArea & area ) const;
         int GetFogDirections( int color ) const;
-        void RedrawFogs( fheroes2::Image &, int ) const;
-        void RedrawAddon( fheroes2::Image & dst, const Addons & addon, bool isPuzzleDraw = false ) const;
-        void RedrawPassable( fheroes2::Image & ) const;
+        void RedrawFogs( fheroes2::Image &, int, const Interface::GameArea & area ) const;
+        void RedrawAddon( fheroes2::Image & dst, const Addons & addon, const Rect & visibleTileROI, bool isPuzzleDraw, const Interface::GameArea & area ) const;
+        void RedrawPassable( fheroes2::Image & dst, const Rect & visibleTileROI ) const;
 
         void AddonsPushLevel1( const MP2::mp2tile_t & );
         void AddonsPushLevel1( const MP2::mp2addon_t & );
@@ -181,7 +224,12 @@ namespace Maps
 
         std::string String( void ) const;
 
-        bool isFog( int color ) const;
+        bool isFog( const int colors ) const
+        {
+            // colors may be the union friends
+            return ( fog_colors & colors ) == colors;
+        }
+
         void ClearFog( int color );
 
         /* monster operation */
@@ -216,7 +264,12 @@ namespace Maps
         Troop QuantityTroop( void ) const;
 
         void SetObjectPassable( bool );
-        void SetQuantity3( int value );
+
+        // Set Tile metadata field (used for things like adventure spell ID)
+        void SetQuantity3( const uint8_t value )
+        {
+            quantity3 = value;
+        }
 
         Heroes * GetHeroes( void ) const;
         void SetHeroes( Heroes * );
@@ -229,7 +282,7 @@ namespace Maps
         static void UpdateAbandoneMineRightSprite( uint8_t & tileset, uint8_t & index );
         static int GetPassable( uint32_t tileset, uint32_t index );
         static std::pair<int, int> ColorRaceFromHeroSprite( uint32_t heroSpriteIndex );
-        static std::pair<int, int> GetMonsterSpriteIndices( const Tiles & tile, uint32_t monsterIndex );
+        static std::pair<uint32_t, uint32_t> GetMonsterSpriteIndices( const Tiles & tile, uint32_t monsterIndex );
         static void PlaceMonsterOnTile( Tiles &, const Monster &, u32 );
         static void UpdateAbandoneMineSprite( Tiles & );
         static void FixedPreload( Tiles & );
@@ -239,9 +292,6 @@ namespace Maps
         void CorrectFlags32( u32 index, bool );
         void RemoveJailSprite( void );
         bool isLongObject( int direction );
-
-        void RedrawBoat( fheroes2::Image & dst, bool withShadow ) const;
-        void RedrawMonster( fheroes2::Image & dst ) const;
 
         void QuantitySetVariant( int );
         void QuantitySetExt( int );

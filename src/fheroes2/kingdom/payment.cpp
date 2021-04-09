@@ -23,10 +23,8 @@
 #include <cstring>
 
 #include "buildinginfo.h"
-#include "castle.h"
+#include "logging.h"
 #include "payment.h"
-#include "race.h"
-#include "settings.h"
 
 struct paymentstats_t
 {
@@ -89,7 +87,7 @@ void PaymentConditions::UpdateCosts( const std::string & spec )
         }
     }
     else
-        VERBOSE( spec << ": " << doc.ErrorDesc() );
+        VERBOSE_LOG( spec << ": " << doc.ErrorDesc() );
 #else
     (void)spec;
 #endif
@@ -103,7 +101,7 @@ payment_t PaymentConditions::BuyBuilding( int race, u32 build )
 payment_t PaymentConditions::BuyBoat( void )
 {
     payment_t result;
-    paymentstats_t * ptr = &_payments[0];
+    const paymentstats_t * ptr = &_payments[0];
 
     while ( ptr->id && std::strcmp( "buy_boat", ptr->id ) )
         ++ptr;
@@ -116,7 +114,7 @@ payment_t PaymentConditions::BuyBoat( void )
 payment_t PaymentConditions::BuySpellBook( int shrine )
 {
     payment_t result;
-    paymentstats_t * ptr = &_payments[0];
+    const paymentstats_t * ptr = &_payments[0];
     const char * skey = NULL;
 
     switch ( shrine ) {
@@ -145,7 +143,7 @@ payment_t PaymentConditions::BuySpellBook( int shrine )
 payment_t PaymentConditions::RecruitHero( int level )
 {
     payment_t result;
-    paymentstats_t * ptr = &_payments[0];
+    const paymentstats_t * ptr = &_payments[0];
     while ( ptr->id && std::strcmp( "recruit_hero", ptr->id ) )
         ++ptr;
     if ( ptr->id )
@@ -180,7 +178,7 @@ payment_t PaymentConditions::RecruitHero( int level )
 payment_t PaymentConditions::ForAlchemist()
 {
     payment_t result;
-    paymentstats_t * ptr = &_payments[0];
+    const paymentstats_t * ptr = &_payments[0];
     while ( ptr->id && std::strcmp( "alchemist_payment", ptr->id ) )
         ++ptr;
     if ( ptr->id )

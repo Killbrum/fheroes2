@@ -21,11 +21,13 @@
  ***************************************************************************/
 
 #include "dialog_selectscenario.h"
-#include "agg.h"
+#include "agg_image.h"
 #include "cursor.h"
 #include "dialog.h"
 #include "difficulty.h"
 #include "game.h"
+#include "icn.h"
+#include "localevent.h"
 #include "maps.h"
 #include "settings.h"
 #include "text.h"
@@ -245,8 +247,8 @@ const Maps::FileInfo * Dialog::SelectScenario( const MapsFileInfoList & all, siz
     listbox.RedrawBackground( rt );
     listbox.SetScrollButtonUp( ICN::REQUESTS, 5, 6, fheroes2::Point( rt.x + 327, rt.y + 55 ) );
     listbox.SetScrollButtonDn( ICN::REQUESTS, 7, 8, fheroes2::Point( rt.x + 327, rt.y + 217 ) );
-    // FIXME: update Listbox
-    listbox.SetScrollSplitter( fheroes2::AGG::GetICN( ICN::ESCROLL, 3 ), fheroes2::Rect( rt.x + 328, rt.y + 73, 12, 141 ) );
+
+    listbox.SetScrollBar( fheroes2::AGG::GetICN( ICN::ESCROLL, 3 ), fheroes2::Rect( rt.x + 328, rt.y + 73, 12, 140 ) );
     listbox.SetAreaMaxItems( 9 );
     listbox.SetAreaItems( fheroes2::Rect( rt.x + 55, rt.y + 55, 270, 175 ) );
     listbox.SetListContent( const_cast<MapsFileInfoList &>( all ) );
@@ -289,7 +291,7 @@ const Maps::FileInfo * Dialog::SelectScenario( const MapsFileInfoList & all, siz
             result = NULL;
             break;
         }
-        else if ( ( le.MouseClickLeft( buttonSelectSmall.area() ) || le.KeyPress( KEY_s ) ) /*&& buttonSelectSmall.isEnabled()*/ ) {
+        else if ( le.MouseClickLeft( buttonSelectSmall.area() ) || le.KeyPress( KEY_s ) /*&& buttonSelectSmall.isEnabled()*/ ) {
             if ( small.empty() ) {
                 Dialog::Message( "", _( "No maps exist at that size" ), Font::BIG, Dialog::OK );
                 currentPressedButton->drawOnPress();
@@ -300,7 +302,7 @@ const Maps::FileInfo * Dialog::SelectScenario( const MapsFileInfoList & all, siz
             }
             cursor.Hide();
         }
-        else if ( ( le.MouseClickLeft( buttonSelectMedium.area() ) || le.KeyPress( KEY_m ) ) /*&& buttonSelectMedium.isEnabled()*/ ) {
+        else if ( le.MouseClickLeft( buttonSelectMedium.area() ) || le.KeyPress( KEY_m ) /*&& buttonSelectMedium.isEnabled()*/ ) {
             if ( medium.empty() ) {
                 Dialog::Message( "", _( "No maps exist at that size" ), Font::BIG, Dialog::OK );
                 currentPressedButton->drawOnPress();
@@ -311,7 +313,7 @@ const Maps::FileInfo * Dialog::SelectScenario( const MapsFileInfoList & all, siz
             }
             cursor.Hide();
         }
-        else if ( ( le.MouseClickLeft( buttonSelectLarge.area() ) || le.KeyPress( KEY_l ) ) /*&& buttonSelectLarge.isEnabled()*/ ) {
+        else if ( le.MouseClickLeft( buttonSelectLarge.area() ) || le.KeyPress( KEY_l ) /*&& buttonSelectLarge.isEnabled()*/ ) {
             if ( large.empty() ) {
                 Dialog::Message( "", _( "No maps exist at that size" ), Font::BIG, Dialog::OK );
                 currentPressedButton->drawOnPress();
@@ -322,7 +324,7 @@ const Maps::FileInfo * Dialog::SelectScenario( const MapsFileInfoList & all, siz
             }
             cursor.Hide();
         }
-        else if ( ( le.MouseClickLeft( buttonSelectXLarge.area() ) || le.KeyPress( KEY_x ) ) /*&& buttonSelectXLarge.isEnabled()*/ ) {
+        else if ( le.MouseClickLeft( buttonSelectXLarge.area() ) || le.KeyPress( KEY_x ) /*&& buttonSelectXLarge.isEnabled()*/ ) {
             if ( xlarge.empty() ) {
                 Dialog::Message( "", _( "No maps exist at that size" ), Font::BIG, Dialog::OK );
                 currentPressedButton->drawOnPress();
@@ -355,7 +357,7 @@ const Maps::FileInfo * Dialog::SelectScenario( const MapsFileInfoList & all, siz
                              _( "Indicates how many players total are in the scenario. Any positions not occupied by humans will be occupied by computer players." ),
                              Font::BIG );
         else if ( le.MousePressRight( sizeMaps ) || le.MousePressRight( curMapSize ) )
-            Dialog::Message( _( "Size Icon" ), _( "Indicates whether the maps is small (36 x 36), medium (72 x 72), large (108 x 108), or extra large (144 x 144)." ),
+            Dialog::Message( _( "Size Icon" ), _( "Indicates whether the map\nis small (36 x 36), medium\n(72 x 72), large (108 x 108),\nor extra large (144 x 144)." ),
                              Font::BIG );
         else if ( le.MousePressRight( curMapName ) )
             Dialog::Message( _( "Selected Name" ), _( "The name of the currently selected map." ), Font::BIG );

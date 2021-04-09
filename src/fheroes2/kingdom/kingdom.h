@@ -26,7 +26,6 @@
 #include <vector>
 
 #include "castle.h"
-#include "heroes.h"
 #include "heroes_recruits.h"
 #include "mp2.h"
 #include "pairs.h"
@@ -50,8 +49,6 @@ struct LastLoseHero
     u32 date;
 };
 
-StreamBase & operator>>( StreamBase &, LastLoseHero & );
-
 struct KingdomCastles : public VecCastles
 {};
 
@@ -63,7 +60,7 @@ class Kingdom : public BitModes, public Control
 public:
     enum
     {
-        // UNDEF	     = 0x0001,
+        // UNDEF      = 0x0001,
         IDENTIFYHERO = 0x0002,
         DISABLEHIRES = 0x0004,
         OVERVIEWCSTL = 0x0008
@@ -83,7 +80,7 @@ public:
     bool AllowPayment( const Funds & ) const;
     bool AllowRecruitHero( bool check_payment, int level ) const;
 
-    void SetLastLostHero( Heroes & );
+    void SetLastLostHero( const Heroes & );
     void ResetLastLostHero( void );
     void AddHeroStartCondLoss( Heroes * );
     std::string GetNamesHeroStartCondLoss( void ) const;
@@ -91,7 +88,7 @@ public:
     Heroes * GetLastLostHero( void ) const;
 
     const Heroes * GetFirstHeroStartCondLoss( void ) const;
-    const Heroes * GetBestHero( void ) const;
+    Heroes * GetBestHero();
 
     int GetControl( void ) const;
     int GetColor( void ) const;
@@ -117,6 +114,8 @@ public:
     u32 GetCountBuilding( u32 ) const;
     uint32_t GetCountThievesGuild() const;
 
+    uint32_t GetCountArtifacts() const;
+
     Recruits & GetRecruits( void );
 
     const KingdomHeroes & GetHeroes( void ) const
@@ -140,7 +139,7 @@ public:
     void AddHeroes( Heroes * );
     void RemoveHeroes( const Heroes * );
     void ApplyPlayWithStartingHero( void );
-    void HeroesActionNewPosition( void );
+    void HeroesActionNewPosition() const;
 
     void AddCastle( const Castle * );
     void RemoveCastle( const Castle * );
@@ -169,7 +168,10 @@ public:
     void UpdateRecruits( void );
     void LossPostActions( void );
 
+    bool IsTileVisibleFromCrystalBall( const int32_t dest ) const;
+
     static u32 GetMaxHeroes( void );
+    static cost_t GetKingdomStartingResources( int difficulty, bool isAIKingdom );
 
 private:
     friend StreamBase & operator<<( StreamBase &, const Kingdom & );

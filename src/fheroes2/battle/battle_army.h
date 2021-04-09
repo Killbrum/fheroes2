@@ -73,8 +73,7 @@ namespace Battle
         void NewTurn( void );
         void SyncArmyCount( bool checkResurrected );
 
-        static Unit * GetCurrentUnit( const Force &, const Force &, Unit * last, Units * all, bool part1 );
-        static Unit * GetCurrentUnit( const Force &, const Force &, Unit * last, bool part1 );
+        static Unit * GetCurrentUnit( const Force &, const Force &, const Unit * last, bool part1 );
         static void UpdateOrderUnits( const Force &, const Force &, Units & );
 
     private:

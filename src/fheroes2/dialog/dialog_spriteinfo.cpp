@@ -20,11 +20,12 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
-#include "agg.h"
+#include "agg_image.h"
 #include "artifact.h"
 #include "cursor.h"
 #include "dialog.h"
 #include "game.h"
+#include "icn.h"
 #include "text.h"
 #include "ui_button.h"
 
@@ -33,7 +34,7 @@ int Dialog::ArtifactInfo( const std::string & hdr, const std::string & msg, cons
     const fheroes2::Sprite & border = fheroes2::AGG::GetICN( ICN::RESOURCE, 7 );
     const fheroes2::Sprite & artifact = fheroes2::AGG::GetICN( ICN::ARTIFACT, art.IndexSprite64() );
 
-    fheroes2::Image image = border;
+    fheroes2::Sprite image = border;
     fheroes2::Blit( artifact, image, 5, 5 );
 
     std::string ext = msg;
@@ -59,7 +60,7 @@ int Dialog::SpriteInfo( const std::string & header, const std::string & message,
     TextBox box2( message, Font::BIG, BOXAREA_WIDTH );
     const int spacer = 10;
 
-    FrameBox box( box1.h() + spacer + box2.h() + spacer + sprite.height(), buttons );
+    FrameBox box( box1.h() + spacer + box2.h() + spacer + sprite.height(), buttons != 0 );
     fheroes2::Rect pos = box.GetArea();
 
     if ( header.size() )

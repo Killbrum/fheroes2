@@ -20,11 +20,12 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
-#include "agg.h"
+#include "agg_image.h"
 #include "cursor.h"
 #include "dialog.h"
 #include "game.h"
 #include "heroes.h"
+#include "icn.h"
 #include "settings.h"
 #include "text.h"
 #include "ui_button.h"
@@ -54,7 +55,7 @@ int DialogOneSecondary( const std::string & name, const std::string & primary, c
     const fheroes2::Sprite & sprite_frame = fheroes2::AGG::GetICN( ICN::SECSKILL, 15 );
 
     // Create a surface with no alpha mode to fix SDL 1
-    fheroes2::Image drawSurface = sprite_frame;
+    fheroes2::Sprite drawSurface = sprite_frame;
 
     // sprite
     const fheroes2::Sprite & sprite_skill = fheroes2::AGG::GetICN( ICN::SECSKILL, sec.GetIndexSprite1() );
@@ -157,7 +158,7 @@ int DialogSelectSecondary( const std::string & name, const std::string & primary
     pt.x = box.GetArea().x + box.GetArea().width / 2 - 18;
     pt.y = box.GetArea().y + box.GetArea().height - 36;
 
-    Settings & conf = Settings::Get();
+    const Settings & conf = Settings::Get();
 
     fheroes2::Sprite armyButtonReleased = fheroes2::AGG::GetICN( conf.ExtGameEvilInterface() ? ICN::ADVEBTNS : ICN::ADVBTNS, 0 );
     fheroes2::Sprite armyButtonPressed = fheroes2::AGG::GetICN( conf.ExtGameEvilInterface() ? ICN::ADVEBTNS : ICN::ADVBTNS, 1 );
@@ -174,7 +175,7 @@ int DialogSelectSecondary( const std::string & name, const std::string & primary
 
     fheroes2::ButtonSprite button_hero( pt.x, pt.y, armyButtonReleasedBack, armyButtonPressedBack );
 
-    text.Set( GetString( HEROESMAXSKILL ) + "/" + GetString( hero.GetSecondarySkills().Count() ), Font::BIG );
+    text.Set( std::to_string( hero.GetSecondarySkills().Count() ) + "/" + std::to_string( HEROESMAXSKILL ), Font::BIG );
     text.Blit( box.GetArea().x + ( box.GetArea().width - text.w() ) / 2, pt.y - 15 );
 
     button_learn1.draw();
@@ -196,33 +197,33 @@ int DialogSelectSecondary( const std::string & name, const std::string & primary
         else if ( le.MouseClickLeft( button_learn2.area() ) || Game::HotKeyPressEvent( Game::EVENT_DEFAULT_RIGHT ) )
             return sec2.Skill();
         else if ( le.MouseClickLeft( button_hero.area() ) || Game::HotKeyPressEvent( Game::EVENT_DEFAULT_READY ) ) {
-            hero.OpenDialog( true /* read only */, false );
+            const bool noDismiss = hero.Modes( Heroes::NOTDISMISS );
+            hero.SetModes( Heroes::NOTDISMISS );
+            hero.OpenDialog( false, true );
+
+            if ( !noDismiss ) {
+                hero.ResetModes( Heroes::NOTDISMISS );
+            }
             cursor.Show();
             display.render();
         }
 
         if ( le.MouseClickLeft( rect_image1 ) ) {
-            cursor.Hide();
-            Dialog::SecondarySkillInfo( sec1 );
-            cursor.Show();
-            display.render();
+            Dialog::SecondarySkillInfo( sec1, hero );
         }
         else if ( le.MouseClickLeft( rect_image2 ) ) {
-            cursor.Hide();
-            Dialog::SecondarySkillInfo( sec2 );
-            cursor.Show();
-            display.render();
+            Dialog::SecondarySkillInfo( sec2, hero );
         }
 
         if ( le.MousePressRight( rect_image1 ) ) {
             cursor.Hide();
-            Dialog::SecondarySkillInfo( sec1, false );
+            Dialog::SecondarySkillInfo( sec1, hero, false );
             cursor.Show();
             display.render();
         }
         else if ( le.MousePressRight( rect_image2 ) ) {
             cursor.Hide();
-            Dialog::SecondarySkillInfo( sec2, false );
+            Dialog::SecondarySkillInfo( sec2, hero, false );
             cursor.Show();
             display.render();
         }

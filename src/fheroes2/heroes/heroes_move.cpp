@@ -21,6 +21,7 @@
  ***************************************************************************/
 
 #include "agg.h"
+#include "agg_image.h"
 #include "castle.h"
 #include "cursor.h"
 #include "direction.h"
@@ -28,21 +29,18 @@
 #include "game_interface.h"
 #include "ground.h"
 #include "heroes.h"
+#include "icn.h"
 #include "kingdom.h"
+#include "logging.h"
 #include "m82.h"
 #include "maps_tiles.h"
 #include "race.h"
-#include "settings.h"
 #include "world.h"
 
 namespace
 {
     const int heroFrameCount = 9;
 }
-
-bool ReflectSprite( int from );
-void PlayWalkSound( int ground );
-bool isNeedStayFrontObject( const Heroes & hero, const Maps::Tiles & next );
 
 void PlayWalkSound( int ground )
 {
@@ -80,7 +78,7 @@ void PlayWalkSound( int ground )
     }
 
     if ( wav != M82::UNKNOWN )
-        AGG::PlaySound( wav );
+        AGG::PlaySound( wav, true );
 }
 
 bool ReflectSprite( int from )
@@ -98,7 +96,7 @@ bool ReflectSprite( int from )
     return false;
 }
 
-fheroes2::Sprite SpriteHero( const Heroes & hero, int index, bool rotate )
+const fheroes2::Sprite & SpriteHero( const Heroes & hero, int index, bool rotate )
 {
     int icn_hero = ICN::UNKNOWN;
     int index_sprite = 0;
@@ -127,7 +125,7 @@ fheroes2::Sprite SpriteHero( const Heroes & hero, int index, bool rotate )
             break;
 
         default:
-            DEBUG( DBG_GAME, DBG_WARN, "unknown race" );
+            DEBUG_LOG( DBG_GAME, DBG_WARN, "unknown race" );
             break;
         }
 
@@ -161,14 +159,14 @@ fheroes2::Sprite SpriteHero( const Heroes & hero, int index, bool rotate )
             break;
 
         default:
-            DEBUG( DBG_GAME, DBG_WARN, "unknown direction" );
+            DEBUG_LOG( DBG_GAME, DBG_WARN, "unknown direction" );
             break;
         }
 
     return fheroes2::AGG::GetICN( icn_hero, index_sprite + ( index % 9 ) );
 }
 
-fheroes2::Sprite SpriteFlag( const Heroes & hero, int index, bool rotate )
+const fheroes2::Sprite & SpriteFlag( const Heroes & hero, int index, bool rotate, fheroes2::Point & offset )
 {
     int icn_flag = ICN::UNKNOWN;
     int index_sprite = 0;
@@ -194,7 +192,7 @@ fheroes2::Sprite SpriteFlag( const Heroes & hero, int index, bool rotate )
         break;
 
     default:
-        DEBUG( DBG_GAME, DBG_WARN, "unknown color" );
+        DEBUG_LOG( DBG_GAME, DBG_WARN, "unknown color" );
         break;
     }
 
@@ -228,34 +226,42 @@ fheroes2::Sprite SpriteFlag( const Heroes & hero, int index, bool rotate )
             break;
 
         default:
-            DEBUG( DBG_GAME, DBG_WARN, "unknown direction" );
+            DEBUG_LOG( DBG_GAME, DBG_WARN, "unknown direction" );
             break;
         }
 
     const int frameId = index % heroFrameCount;
-    fheroes2::Sprite flag = fheroes2::AGG::GetICN( icn_flag, index_sprite + frameId );
+    const fheroes2::Sprite & flag = fheroes2::AGG::GetICN( icn_flag, index_sprite + frameId );
     if ( !hero.isMoveEnabled() ) {
-        static const Point offsetTop[heroFrameCount]
-            = {Point( 0, 0 ), Point( 0, 2 ), Point( 0, 3 ), Point( 0, 2 ), Point( 0, 0 ), Point( 0, 1 ), Point( 0, 3 ), Point( 0, 2 ), Point( 0, 1 )};
-        static const Point offsetBottom[heroFrameCount]
-            = {Point( 0, 0 ), Point( 0, -1 ), Point( 0, -2 ), Point( 0, 0 ), Point( 0, -1 ), Point( 0, -2 ), Point( 0, -3 ), Point( 0, 0 ), Point( 0, -1 )};
-        static const Point offsetSideways[heroFrameCount]
-            = {Point( 0, 0 ), Point( -1, 0 ), Point( 0, 0 ), Point( 1, 0 ), Point( 1, -1 ), Point( 2, -1 ), Point( 1, 0 ), Point( 0, 0 ), Point( 1, 0 )};
-        static const Point offsetTopSideways[heroFrameCount]
-            = {Point( 0, 0 ), Point( -1, 0 ), Point( 0, 0 ), Point( -1, -1 ), Point( -2, -1 ), Point( -2, 0 ), Point( -1, 0 ), Point( 0, 0 ), Point( 1, 0 )};
-        static const Point offsetBottomSideways[heroFrameCount]
-            = {Point( 0, 0 ), Point( -1, 0 ), Point( 0, -1 ), Point( 2, -2 ), Point( 0, -2 ), Point( -1, -3 ), Point( -1, -2 ), Point( -1, -1 ), Point( 1, 0 )};
+        static const fheroes2::Point offsetTop[heroFrameCount]
+            = { fheroes2::Point( 0, 0 ), fheroes2::Point( 0, 2 ), fheroes2::Point( 0, 3 ), fheroes2::Point( 0, 2 ), fheroes2::Point( 0, 0 ),
+                fheroes2::Point( 0, 1 ), fheroes2::Point( 0, 3 ), fheroes2::Point( 0, 2 ), fheroes2::Point( 0, 1 ) };
+        static const fheroes2::Point offsetBottom[heroFrameCount]
+            = { fheroes2::Point( 0, 0 ),  fheroes2::Point( 0, -1 ), fheroes2::Point( 0, -2 ), fheroes2::Point( 0, 0 ), fheroes2::Point( 0, -1 ),
+                fheroes2::Point( 0, -2 ), fheroes2::Point( 0, -3 ), fheroes2::Point( 0, 0 ),  fheroes2::Point( 0, -1 ) };
+        static const fheroes2::Point offsetSideways[heroFrameCount]
+            = { fheroes2::Point( 0, 0 ),  fheroes2::Point( -1, 0 ), fheroes2::Point( 0, 0 ), fheroes2::Point( 1, 0 ), fheroes2::Point( 1, -1 ),
+                fheroes2::Point( 2, -1 ), fheroes2::Point( 1, 0 ),  fheroes2::Point( 0, 0 ), fheroes2::Point( 1, 0 ) };
+        static const fheroes2::Point offsetTopSideways[heroFrameCount]
+            = { fheroes2::Point( 0, 0 ),  fheroes2::Point( -1, 0 ), fheroes2::Point( 0, 0 ), fheroes2::Point( -1, -1 ), fheroes2::Point( -2, -1 ),
+                fheroes2::Point( -2, 0 ), fheroes2::Point( -1, 0 ), fheroes2::Point( 0, 0 ), fheroes2::Point( 1, 0 ) };
+        static const fheroes2::Point offsetBottomSideways[heroFrameCount]
+            = { fheroes2::Point( 0, 0 ),   fheroes2::Point( -1, 0 ),  fheroes2::Point( 0, -1 ),  fheroes2::Point( 2, -2 ), fheroes2::Point( 0, -2 ),
+                fheroes2::Point( -1, -3 ), fheroes2::Point( -1, -2 ), fheroes2::Point( -1, -1 ), fheroes2::Point( 1, 0 ) };
 
-        static const Point offsetShipTopBottom[heroFrameCount]
-            = {Point( 0, -1 ), Point( 0, 0 ), Point( 0, 1 ), Point( 0, 1 ), Point( 0, 1 ), Point( 0, 0 ), Point( 0, 1 ), Point( 0, 1 ), Point( 0, 1 )};
-        static const Point offsetShipSideways[heroFrameCount]
-            = {Point( 0, -2 ), Point( 0, -1 ), Point( 0, 0 ), Point( 0, 1 ), Point( 0, 0 ), Point( 0, -1 ), Point( 0, 0 ), Point( 0, -1 ), Point( 0, 1 )};
-        static const Point offsetShipTopSideways[heroFrameCount]
-            = {Point( 0, 0 ), Point( 0, -1 ), Point( 0, 0 ), Point( 0, 1 ), Point( 0, 0 ), Point( 0, -1 ), Point( 0, 0 ), Point( 0, -1 ), Point( 0, 1 )};
-        static const Point offsetShipBottomSideways[heroFrameCount]
-            = {Point( 0, -2 ), Point( 0, 0 ), Point( 0, 0 ), Point( 0, 0 ), Point( 0, 0 ), Point( 0, 0 ), Point( 0, 0 ), Point( 0, 0 ), Point( 0, 0 )};
+        static const fheroes2::Point offsetShipTopBottom[heroFrameCount]
+            = { fheroes2::Point( 0, -1 ), fheroes2::Point( 0, 0 ), fheroes2::Point( 0, 1 ), fheroes2::Point( 0, 1 ), fheroes2::Point( 0, 1 ),
+                fheroes2::Point( 0, 0 ),  fheroes2::Point( 0, 1 ), fheroes2::Point( 0, 1 ), fheroes2::Point( 0, 1 ) };
+        static const fheroes2::Point offsetShipSideways[heroFrameCount]
+            = { fheroes2::Point( 0, -2 ), fheroes2::Point( 0, -1 ), fheroes2::Point( 0, 0 ),  fheroes2::Point( 0, 1 ), fheroes2::Point( 0, 0 ),
+                fheroes2::Point( 0, -1 ), fheroes2::Point( 0, 0 ),  fheroes2::Point( 0, -1 ), fheroes2::Point( 0, 1 ) };
+        static const fheroes2::Point offsetShipTopSideways[heroFrameCount]
+            = { fheroes2::Point( 0, 0 ),  fheroes2::Point( 0, -1 ), fheroes2::Point( 0, 0 ),  fheroes2::Point( 0, 1 ), fheroes2::Point( 0, 0 ),
+                fheroes2::Point( 0, -1 ), fheroes2::Point( 0, 0 ),  fheroes2::Point( 0, -1 ), fheroes2::Point( 0, 1 ) };
+        static const fheroes2::Point offsetShipBottomSideways[heroFrameCount]
+            = { fheroes2::Point( 0, -2 ), fheroes2::Point( 0, 0 ), fheroes2::Point( 0, 0 ), fheroes2::Point( 0, 0 ), fheroes2::Point( 0, 0 ),
+                fheroes2::Point( 0, 0 ),  fheroes2::Point( 0, 0 ), fheroes2::Point( 0, 0 ), fheroes2::Point( 0, 0 ) };
 
-        Point offset;
         switch ( hero.GetDirection() ) {
         case Direction::TOP:
             offset = hero.isShipMaster() ? offsetShipTopBottom[frameId] : offsetTop[frameId];
@@ -276,52 +282,68 @@ fheroes2::Sprite SpriteFlag( const Heroes & hero, int index, bool rotate )
             offset = hero.isShipMaster() ? offsetShipBottomSideways[frameId] : offsetBottomSideways[frameId];
             break;
         }
-
-        flag.setPosition( flag.x() + offset.x, flag.y() + offset.y );
     }
     return flag;
 }
 
-fheroes2::Sprite SpriteShad( const Heroes & hero, int index )
+const fheroes2::Sprite & SpriteShad( const Heroes & hero, int index )
 {
-    int icn_shad = hero.isShipMaster() ? ICN::BOATSHAD : ICN::SHADOW32;
-    int index_sprite = 0;
+    if ( hero.isShipMaster() ) {
+        int indexSprite = 0;
 
-    switch ( hero.GetDirection() ) {
-    case Direction::TOP:
-        index_sprite = 0;
-        break;
-    case Direction::TOP_RIGHT:
-        index_sprite = 9;
-        break;
-    case Direction::RIGHT:
-        index_sprite = 18;
-        break;
-    case Direction::BOTTOM_RIGHT:
-        index_sprite = 27;
-        break;
-    case Direction::BOTTOM:
-        index_sprite = 36;
-        break;
-    case Direction::BOTTOM_LEFT:
-        index_sprite = 45;
-        break;
-    case Direction::LEFT:
-        index_sprite = 54;
-        break;
-    case Direction::TOP_LEFT:
-        index_sprite = 63;
-        break;
+        switch ( hero.GetDirection() ) {
+        case Direction::TOP:
+            indexSprite = 0;
+            break;
+        case Direction::TOP_RIGHT:
+            indexSprite = 9;
+            break;
+        case Direction::RIGHT:
+            indexSprite = 18;
+            break;
+        case Direction::BOTTOM_RIGHT:
+            indexSprite = 27;
+            break;
+        case Direction::BOTTOM:
+            indexSprite = 36;
+            break;
+        case Direction::BOTTOM_LEFT:
+            indexSprite = 45;
+            break;
+        case Direction::LEFT:
+            indexSprite = 54;
+            break;
+        case Direction::TOP_LEFT:
+            indexSprite = 63;
+            break;
+        default:
+            DEBUG_LOG( DBG_GAME, DBG_WARN, "unknown direction" );
+            break;
+        }
 
-    default:
-        DEBUG( DBG_GAME, DBG_WARN, "unknown direction" );
-        break;
+        return fheroes2::AGG::GetICN( ICN::BOATSHAD, indexSprite + ( index % 9 ) );
     }
+    else {
+        int indexSprite = index;
 
-    return fheroes2::AGG::GetICN( icn_shad, index_sprite + ( index % 9 ) );
+        if ( indexSprite == 51 )
+            indexSprite = 56;
+        else if ( indexSprite == 50 )
+            indexSprite = 57;
+        else if ( indexSprite == 49 )
+            indexSprite = 58;
+        else if ( indexSprite == 47 )
+            indexSprite = 55;
+        else if ( indexSprite == 46 )
+            indexSprite = 55;
+
+        const int indexOffset = ( indexSprite < 9 || indexSprite >= 36 ) ? 0 : 50;
+
+        return fheroes2::AGG::GetICN( ICN::SHADOW32, indexSprite + indexOffset );
+    }
 }
 
-fheroes2::Sprite SpriteFroth( const Heroes & hero, int index )
+const fheroes2::Sprite & SpriteFroth( const Heroes & hero, int index )
 {
     int index_sprite = 0;
 
@@ -352,7 +374,7 @@ fheroes2::Sprite SpriteFroth( const Heroes & hero, int index )
         break;
 
     default:
-        DEBUG( DBG_GAME, DBG_WARN, "unknown direction" );
+        DEBUG_LOG( DBG_GAME, DBG_WARN, "unknown direction" );
         break;
     }
 
@@ -364,7 +386,7 @@ bool isNeedStayFrontObject( const Heroes & hero, const Maps::Tiles & next )
     if ( next.GetObject() == MP2::OBJ_CASTLE ) {
         const Castle * castle = world.GetCastle( next.GetCenter() );
 
-        return ( castle && !hero.isFriends( castle->GetColor() ) );
+        return castle && !hero.isFriends( castle->GetColor() ) && castle->GetActualArmy().isValid();
     }
     else
         // to coast action
@@ -374,14 +396,107 @@ bool isNeedStayFrontObject( const Heroes & hero, const Maps::Tiles & next )
     return MP2::isNeedStayFront( next.GetObject() );
 }
 
-void Heroes::Redraw( fheroes2::Image & dst, s32 dx, s32 dy, bool withShadow ) const
+bool Heroes::isInVisibleMapArea() const
 {
-    const Point & mp = GetCenter();
-    const Interface::GameArea & gamearea = Interface::Basic::Get().GetGameArea();
-    if ( !( gamearea.GetVisibleTileROI() & mp ) )
+    return Interface::Basic::Get().GetGameArea().GetVisibleTileROI() & GetCenter();
+}
+
+void Heroes::RedrawShadow( fheroes2::Image & dst, int32_t dx, int32_t dy, const Rect & visibleTileROI, const Interface::GameArea & gamearea ) const
+{
+    if ( !( visibleTileROI & GetCenter() ) )
         return;
 
-    const s32 centerIndex = GetIndex();
+    const bool reflect = ReflectSprite( direction );
+
+    // boat sprite have to be shifted so it matches other boats
+    if ( isShipMaster() )
+        dy -= 10;
+
+    const fheroes2::Sprite & sprite3 = SpriteShad( *this, sprite_index );
+    const fheroes2::Sprite & sprite4 = SpriteFroth( *this, sprite_index );
+
+    Point dst_pt3( dx + sprite3.x(), dy + sprite3.y() + TILEWIDTH );
+    Point dst_pt4( dx + ( reflect ? TILEWIDTH - sprite4.x() - sprite4.width() : sprite4.x() ), dy + sprite4.y() + TILEWIDTH );
+
+    // apply offset
+    if ( sprite_index < 45 ) {
+        int32_t ox = 0;
+        int32_t oy = 0;
+        int frame = ( sprite_index % 9 );
+        if ( frame > 0 )
+            --frame;
+
+        switch ( direction ) {
+        case Direction::TOP:
+            oy = -HERO_MOVE_STEP * frame;
+            break;
+        case Direction::TOP_RIGHT:
+            ox = HERO_MOVE_STEP * frame;
+            oy = -HERO_MOVE_STEP * frame;
+            break;
+        case Direction::TOP_LEFT:
+            ox = -HERO_MOVE_STEP * frame;
+            oy = -HERO_MOVE_STEP * frame;
+            break;
+        case Direction::BOTTOM_RIGHT:
+            ox = HERO_MOVE_STEP * frame;
+            oy = HERO_MOVE_STEP * frame;
+            break;
+        case Direction::BOTTOM:
+            oy = HERO_MOVE_STEP * frame;
+            break;
+        case Direction::BOTTOM_LEFT:
+            ox = -HERO_MOVE_STEP * frame;
+            oy = HERO_MOVE_STEP * frame;
+            break;
+        case Direction::RIGHT:
+            ox = HERO_MOVE_STEP * frame;
+            break;
+        case Direction::LEFT:
+            ox = -HERO_MOVE_STEP * frame;
+            break;
+        default:
+            break;
+        }
+
+        ox += _offset.x;
+        oy += _offset.y;
+
+        dst_pt3.x += ox;
+        dst_pt3.y += oy;
+        dst_pt4.x += ox;
+        dst_pt4.y += oy;
+    }
+
+    if ( isShipMaster() ) {
+        const Directions & directions = Direction::All();
+        const int filter = DIRECTION_BOTTOM_ROW | Direction::LEFT | Direction::RIGHT;
+        const int32_t centerIndex = GetIndex();
+
+        bool ocean = true;
+        for ( Directions::const_iterator it = directions.begin(); it != directions.end(); ++it ) {
+            if ( ( *it & filter ) && Maps::isValidDirection( centerIndex, *it ) && !world.GetTiles( Maps::GetDirectionIndex( centerIndex, *it ) ).isWater() ) {
+                ocean = false;
+                break;
+            }
+        }
+
+        if ( ocean ) {
+            const Rect blitArea = gamearea.RectFixed( dst_pt4, sprite4.width(), sprite4.height() );
+            fheroes2::AlphaBlit( sprite4, blitArea.x, blitArea.y, dst, dst_pt4.x, dst_pt4.y, blitArea.w, blitArea.h, _alphaValue, reflect );
+        }
+    }
+
+    const Rect blitArea = gamearea.RectFixed( dst_pt3, sprite3.width(), sprite3.height() );
+    fheroes2::AlphaBlit( sprite3, blitArea.x, blitArea.y, dst, dst_pt3.x, dst_pt3.y, blitArea.w, blitArea.h, _alphaValue );
+}
+
+void Heroes::Redraw( fheroes2::Image & dst, int32_t dx, int32_t dy, const Rect & visibleTileROI, const Interface::GameArea & gamearea ) const
+{
+    if ( !( visibleTileROI & GetCenter() ) )
+        return;
+
+    const int32_t centerIndex = GetIndex();
     const bool reflect = ReflectSprite( direction );
 
     int flagFrameID = sprite_index;
@@ -393,20 +508,18 @@ void Heroes::Redraw( fheroes2::Image & dst, s32 dx, s32 dy, bool withShadow ) co
     if ( isShipMaster() )
         dy -= 10;
 
+    fheroes2::Point flagOffset;
     const fheroes2::Sprite & sprite1 = SpriteHero( *this, sprite_index, false );
-    const fheroes2::Sprite & sprite2 = SpriteFlag( *this, flagFrameID, false );
-    const fheroes2::Sprite & sprite3 = SpriteShad( *this, sprite_index );
-    const fheroes2::Sprite & sprite4 = SpriteFroth( *this, sprite_index );
+    const fheroes2::Sprite & sprite2 = SpriteFlag( *this, flagFrameID, false, flagOffset );
 
     Point dst_pt1( dx + ( reflect ? TILEWIDTH - sprite1.x() - sprite1.width() : sprite1.x() ), dy + sprite1.y() + TILEWIDTH );
-    Point dst_pt2( dx + ( reflect ? TILEWIDTH - sprite2.x() - sprite2.width() : sprite2.x() ), dy + sprite2.y() + TILEWIDTH );
-    Point dst_pt3( dx + sprite3.x(), dy + sprite3.y() + TILEWIDTH );
-    Point dst_pt4( dx + ( reflect ? TILEWIDTH - sprite4.x() - sprite4.width() : sprite4.x() ), dy + sprite4.y() + TILEWIDTH );
+    Point dst_pt2( dx + ( reflect ? TILEWIDTH - sprite2.x() - flagOffset.x - sprite2.width() : sprite2.x() + flagOffset.x ),
+                   dy + sprite2.y() + flagOffset.y + TILEWIDTH );
 
     // apply offset
     if ( sprite_index < 45 ) {
-        s32 ox = 0;
-        s32 oy = 0;
+        int32_t ox = 0;
+        int32_t oy = 0;
         int frame = ( sprite_index % 9 );
         if ( frame > 0 )
             --frame;
@@ -451,34 +564,6 @@ void Heroes::Redraw( fheroes2::Image & dst, s32 dx, s32 dy, bool withShadow ) co
         dst_pt1.y += oy;
         dst_pt2.x += ox;
         dst_pt2.y += oy;
-        dst_pt3.x += ox;
-        dst_pt3.y += oy;
-        dst_pt4.x += ox;
-        dst_pt4.y += oy;
-    }
-
-    if ( isShipMaster() ) {
-        const Directions directions = Direction::All();
-        const int filter = DIRECTION_BOTTOM_ROW | Direction::LEFT | Direction::RIGHT;
-
-        bool ocean = true;
-        for ( Directions::const_iterator it = directions.begin(); it != directions.end(); ++it ) {
-            if ( ( *it & filter ) && Maps::isValidDirection( centerIndex, *it ) && !world.GetTiles( Maps::GetDirectionIndex( centerIndex, *it ) ).isWater() ) {
-                ocean = false;
-                break;
-            }
-        }
-
-        if ( ocean ) {
-            const Rect blitArea = gamearea.RectFixed( dst_pt4, sprite4.width(), sprite4.height() );
-            fheroes2::AlphaBlit( sprite4, blitArea.x, blitArea.y, dst, dst_pt4.x, dst_pt4.y, blitArea.w, blitArea.h, _alphaValue, reflect );
-        }
-    }
-
-    // redraw sprites for shadow
-    if ( withShadow ) {
-        const Rect blitArea = gamearea.RectFixed( dst_pt3, sprite3.width(), sprite3.height() );
-        fheroes2::AlphaBlit( sprite3, blitArea.x, blitArea.y, dst, dst_pt3.x, dst_pt3.y, blitArea.w, blitArea.h, _alphaValue );
     }
 
     // redraw sprites hero and flag
@@ -488,47 +573,45 @@ void Heroes::Redraw( fheroes2::Image & dst, s32 dx, s32 dy, bool withShadow ) co
     fheroes2::AlphaBlit( sprite2, blitAreaFlag.x, blitAreaFlag.y, dst, dst_pt2.x, dst_pt2.y, blitAreaFlag.w, blitAreaFlag.h, _alphaValue, reflect );
 
     // redraw dependences tiles
-    Maps::Tiles & tile = world.GetTiles( center.x, center.y );
+    const Maps::Tiles & tile = world.GetTiles( center.x, center.y );
     const bool skipGround = MP2::isActionObject( tile.GetObject( false ), isShipMaster() );
 
-    tile.RedrawTop( dst );
+    tile.RedrawTop( dst, visibleTileROI, gamearea );
 
     if ( Maps::isValidDirection( centerIndex, Direction::TOP ) )
-        world.GetTiles( Maps::GetDirectionIndex( centerIndex, Direction::TOP ) ).RedrawTop4Hero( dst, skipGround );
+        world.GetTiles( Maps::GetDirectionIndex( centerIndex, Direction::TOP ) ).RedrawTop4Hero( dst, visibleTileROI, skipGround, gamearea );
 
     if ( Maps::isValidDirection( centerIndex, Direction::BOTTOM ) ) {
-        Maps::Tiles & tile_bottom = world.GetTiles( Maps::GetDirectionIndex( centerIndex, Direction::BOTTOM ) );
-        tile_bottom.RedrawBottom4Hero( dst );
-        tile_bottom.RedrawTop( dst );
+        const Maps::Tiles & tile_bottom = world.GetTiles( Maps::GetDirectionIndex( centerIndex, Direction::BOTTOM ) );
+        tile_bottom.RedrawBottom4Hero( dst, visibleTileROI, gamearea );
+        tile_bottom.RedrawTop( dst, visibleTileROI, gamearea );
     }
 
     if ( 45 > GetSpriteIndex() ) {
         if ( Direction::BOTTOM != direction && Direction::TOP != direction && Maps::isValidDirection( centerIndex, direction ) ) {
-            if ( Maps::isValidDirection( Maps::GetDirectionIndex( centerIndex, direction ), Direction::BOTTOM ) ) {
-                Maps::Tiles & tile_dir_bottom = world.GetTiles( Maps::GetDirectionIndex( Maps::GetDirectionIndex( centerIndex, direction ), Direction::BOTTOM ) );
-                tile_dir_bottom.RedrawBottom4Hero( dst );
-                tile_dir_bottom.RedrawTop( dst );
+            if ( Direction::BOTTOM_LEFT != direction && Direction::BOTTOM_RIGHT != direction
+                 && Maps::isValidDirection( Maps::GetDirectionIndex( centerIndex, direction ), Direction::BOTTOM ) ) {
+                const Maps::Tiles & tile_dir_bottom = world.GetTiles( Maps::GetDirectionIndex( Maps::GetDirectionIndex( centerIndex, direction ), Direction::BOTTOM ) );
+                tile_dir_bottom.RedrawBottom4Hero( dst, visibleTileROI, gamearea );
+                tile_dir_bottom.RedrawTop( dst, visibleTileROI, gamearea );
             }
-            if ( Maps::isValidDirection( Maps::GetDirectionIndex( centerIndex, direction ), Direction::TOP ) ) {
-                Maps::Tiles & tile_dir_top = world.GetTiles( Maps::GetDirectionIndex( Maps::GetDirectionIndex( centerIndex, direction ), Direction::TOP ) );
-                tile_dir_top.RedrawTop4Hero( dst, skipGround );
+            if ( Direction::TOP_LEFT != direction && Direction::TOP_RIGHT != direction
+                 && Maps::isValidDirection( Maps::GetDirectionIndex( centerIndex, direction ), Direction::TOP ) ) {
+                const Maps::Tiles & tile_dir_top = world.GetTiles( Maps::GetDirectionIndex( Maps::GetDirectionIndex( centerIndex, direction ), Direction::TOP ) );
+                tile_dir_top.RedrawTop4Hero( dst, visibleTileROI, skipGround, gamearea );
             }
         }
 
         if ( Maps::isValidDirection( centerIndex, Direction::BOTTOM ) ) {
-            Maps::Tiles & tile_bottom = world.GetTiles( Maps::GetDirectionIndex( centerIndex, Direction::BOTTOM ) );
+            const Maps::Tiles & tile_bottom = world.GetTiles( Maps::GetDirectionIndex( centerIndex, Direction::BOTTOM ) );
 
             if ( tile_bottom.GetObject() == MP2::OBJ_BOAT )
-                tile_bottom.RedrawObjects( dst );
+                tile_bottom.RedrawObjects( dst, false, gamearea );
         }
     }
 
-    if ( Maps::isValidDirection( centerIndex, direction ) ) {
-        if ( Direction::TOP == direction )
-            world.GetTiles( Maps::GetDirectionIndex( centerIndex, direction ) ).RedrawTop4Hero( dst, skipGround );
-        else
-            world.GetTiles( Maps::GetDirectionIndex( centerIndex, direction ) ).RedrawTop( dst );
-    }
+    if ( Direction::BOTTOM != direction && Direction::TOP != direction && Maps::isValidDirection( centerIndex, direction ) )
+        world.GetTiles( Maps::GetDirectionIndex( centerIndex, direction ) ).RedrawTop( dst, visibleTileROI, gamearea );
 }
 
 void Heroes::MoveStep( Heroes & hero, s32 indexTo, bool newpos )
@@ -542,9 +625,10 @@ void Heroes::MoveStep( Heroes & hero, s32 indexTo, bool newpos )
 
         // possible that hero loses the battle
         if ( !hero.isFreeman() ) {
-            hero.Action( indexTo );
+            const bool isDestination = indexTo == hero.GetPath().GetDestinationIndex();
+            hero.Action( indexTo, isDestination );
 
-            if ( indexTo == hero.GetPath().GetDestinationIndex() ) {
+            if ( isDestination ) {
                 hero.GetPath().Reset();
                 hero.SetMove( false );
             }
@@ -552,7 +636,7 @@ void Heroes::MoveStep( Heroes & hero, s32 indexTo, bool newpos )
     }
     else {
         hero.GetPath().Reset();
-        hero.Action( indexTo );
+        hero.Action( indexTo, true );
         hero.SetMove( false );
     }
 }
@@ -761,13 +845,12 @@ void Heroes::AngleStep( int to_direct )
 
 void Heroes::FadeOut( const Point & offset ) const
 {
-    const Point & mp = GetCenter();
-    Interface::GameArea & gamearea = Interface::Basic::Get().GetGameArea();
-
-    if ( !( gamearea.GetVisibleTileROI() & mp ) )
+    if ( !isInVisibleMapArea() )
         return;
 
-    int multiplier = std::max( std::abs( offset.x ), std::abs( offset.y ) );
+    Interface::GameArea & gamearea = Interface::Basic::Get().GetGameArea();
+
+    int multiplier = std::max( offset.x < 0 ? -offset.x : offset.x, offset.y < 0 ? -offset.y : offset.y );
     if ( multiplier < 1 )
         multiplier = 1;
 
@@ -785,7 +868,7 @@ void Heroes::FadeOut( const Point & offset ) const
                 gamearea.ShiftCenter( offset );
             }
 
-            gamearea.Redraw( display, LEVEL_ALL );
+            gamearea.Redraw( display, Interface::LEVEL_ALL );
 
             Cursor::Get().Show();
             display.render();
@@ -798,13 +881,12 @@ void Heroes::FadeOut( const Point & offset ) const
 
 void Heroes::FadeIn( const Point & offset ) const
 {
-    const Point & mp = GetCenter();
-    Interface::GameArea & gamearea = Interface::Basic::Get().GetGameArea();
-
-    if ( !( gamearea.GetVisibleTileROI() & mp ) )
+    if ( !isInVisibleMapArea() )
         return;
 
-    int multiplier = std::max( std::abs( offset.x ), std::abs( offset.y ) );
+    Interface::GameArea & gamearea = Interface::Basic::Get().GetGameArea();
+
+    int multiplier = std::max( offset.x < 0 ? -offset.x : offset.x, offset.y < 0 ? -offset.y : offset.y );
     if ( multiplier < 1 )
         multiplier = 1;
 
@@ -822,7 +904,7 @@ void Heroes::FadeIn( const Point & offset ) const
                 gamearea.ShiftCenter( offset );
             }
 
-            gamearea.Redraw( display, LEVEL_ALL );
+            gamearea.Redraw( display, Interface::LEVEL_ALL );
 
             Cursor::Get().Show();
             display.render();

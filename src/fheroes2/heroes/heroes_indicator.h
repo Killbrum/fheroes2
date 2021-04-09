@@ -27,6 +27,12 @@
 
 #include "gamedefs.h"
 
+namespace fheroes2
+{
+    std::string LuckString( const int luck );
+    std::string MoraleString( const int morale );
+}
+
 class Heroes;
 
 class HeroesIndicator
@@ -35,7 +41,6 @@ public:
     HeroesIndicator( const Heroes * h = nullptr );
 
     const Rect & GetArea( void ) const;
-    const std::string & GetDescriptions( void ) const;
     void SetPos( const Point & );
     void SetHero( const Heroes * hero );
 
@@ -52,7 +57,7 @@ public:
     LuckIndicator( const Heroes * h = nullptr );
 
     void Redraw( void );
-    static void QueueEventProcessing( LuckIndicator & );
+    static void QueueEventProcessing( const LuckIndicator & );
 
 private:
     int luck;
@@ -64,7 +69,7 @@ public:
     MoraleIndicator( const Heroes * h = nullptr );
 
     void Redraw( void );
-    static void QueueEventProcessing( MoraleIndicator & );
+    static void QueueEventProcessing( const MoraleIndicator & );
 
 private:
     int morale;

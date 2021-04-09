@@ -27,7 +27,7 @@
 #include "audio_mixer.h"
 #include "audio_music.h"
 #include "engine.h"
-#include "system.h"
+#include "logging.h"
 
 namespace Mixer
 {
@@ -63,7 +63,7 @@ void Mixer::Init( void )
         hardware.samples = 2048;
 
         if ( 0 != Mix_OpenAudio( hardware.freq, hardware.format, hardware.channels, hardware.samples ) ) {
-            ERROR( SDL_GetError() );
+            ERROR_LOG( SDL_GetError() );
             valid = false;
         }
         else {
@@ -75,7 +75,7 @@ void Mixer::Init( void )
         }
     }
     else {
-        ERROR( "audio subsystem not initialize" );
+        ERROR_LOG( "audio subsystem not initialize" );
         valid = false;
     }
 }
@@ -109,7 +109,7 @@ Mixer::chunk_t * Mixer::LoadWAV( const char * file )
 {
     Mix_Chunk * sample = Mix_LoadWAV( file );
     if ( !sample )
-        ERROR( SDL_GetError() );
+        ERROR_LOG( SDL_GetError() );
     return sample;
 }
 
@@ -117,7 +117,7 @@ Mixer::chunk_t * Mixer::LoadWAV( const u8 * ptr, u32 size )
 {
     Mix_Chunk * sample = Mix_LoadWAV_RW( SDL_RWFromConstMem( ptr, size ), 1 );
     if ( !sample )
-        ERROR( SDL_GetError() );
+        ERROR_LOG( SDL_GetError() );
     return sample;
 }
 
@@ -125,7 +125,7 @@ int Mixer::Play( chunk_t * sample, int channel, bool loop )
 {
     int res = Mix_PlayChannel( channel, sample, loop ? -1 : 0 );
     if ( res == -1 )
-        ERROR( SDL_GetError() );
+        ERROR_LOG( SDL_GetError() );
     return res;
 }
 
@@ -158,7 +158,7 @@ u16 Mixer::MaxVolume( void )
     return MIX_MAX_VOLUME;
 }
 
-u16 Mixer::Volume( int channel, s16 vol )
+u16 Mixer::Volume( int channel, int16_t vol )
 {
     if ( !valid )
         return 0;
@@ -230,8 +230,8 @@ struct chunk_t
     const u8 * data;
     u32 length;
     u32 position;
-    s16 volume1;
-    s16 volume2;
+    int16_t volume1;
+    int16_t volume2;
     u8 state;
 };
 
@@ -292,7 +292,7 @@ void Mixer::Init( void )
         spec.callback = AudioCallBack;
 
         if ( 0 > SDL_OpenAudio( &spec, &Audio::GetHardwareSpec() ) ) {
-            ERROR( SDL_GetError() );
+            ERROR_LOG( SDL_GetError() );
             valid = false;
         }
         else {
@@ -302,7 +302,7 @@ void Mixer::Init( void )
         }
     }
     else {
-        ERROR( "audio subsystem not initialize" );
+        ERROR_LOG( "audio subsystem not initialize" );
         valid = false;
     }
 }
@@ -330,7 +330,7 @@ u16 Mixer::MaxVolume( void )
     return SDL_MIX_MAXVOLUME;
 }
 
-u16 Mixer::Volume( int ch, s16 vol )
+u16 Mixer::Volume( int ch, int16_t vol )
 {
     if ( !valid )
         return 0;
@@ -371,7 +371,7 @@ int Mixer::Play( const u8 * ptr, u32 size, int channel, bool loop )
             if ( it == chunks.end() ) {
                 it = std::find_if( chunks.begin() + reserved_channels, chunks.end(), PredicateIsFreeSound );
                 if ( it == chunks.end() ) {
-                    ERROR( "mixer is full" );
+                    ERROR_LOG( "mixer is full" );
                     return -1;
                 }
             }

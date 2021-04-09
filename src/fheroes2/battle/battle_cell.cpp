@@ -24,7 +24,7 @@
 #include "army_troop.h"
 #include "battle_board.h"
 #include "battle_troop.h"
-#include "settings.h"
+#include "logging.h"
 
 #define INFL 12
 
@@ -89,7 +89,7 @@ Battle::Position Battle::Position::GetCorrect( const Unit & b, s32 head )
                 std::swap( result.first, result.second );
             }
             else {
-                DEBUG( DBG_BATTLE, DBG_WARN, "NULL pointer, " << b.String() << ", dst: " << head );
+                DEBUG_LOG( DBG_BATTLE, DBG_WARN, "NULL pointer, " << b.String() << ", dst: " << head );
             }
         }
     }
@@ -133,7 +133,7 @@ Battle::Cell::Cell( s32 ii )
 void Battle::Cell::SetArea( const Rect & area )
 {
     pos.x = area.x + 89 - ( ( ( index / ARENAW ) % 2 ) ? CELLW / 2 : 0 ) + ( CELLW ) * ( index % ARENAW );
-    pos.y = area.y + 62 + ( ( ( CELLH - ( CELLH - CELLH_VER_SIDE ) / 2 ) ) * ( index / ARENAW ) );
+    pos.y = area.y + 62 + ( ( CELLH - ( CELLH - CELLH_VER_SIDE ) / 2 ) * ( index / ARENAW ) );
     pos.w = CELLW;
     pos.h = CELLH;
 
@@ -269,8 +269,8 @@ bool Battle::Cell::isPassable3( const Unit & b, bool check_reflect ) const
             return cell && ( cell->isPassable1( true ) || cell->index == b.GetTailIndex() || cell->index == b.GetHeadIndex() ) && isPassable1( true );
         }
         else {
-            Cell * left = Board::GetCell( index, LEFT );
-            Cell * right = Board::GetCell( index, RIGHT );
+            const Cell * left = Board::GetCell( index, LEFT );
+            const Cell * right = Board::GetCell( index, RIGHT );
             return ( ( left && ( left->isPassable1( true ) || left->index == b.GetTailIndex() || left->index == b.GetHeadIndex() ) )
                      || ( right && ( right->isPassable1( true ) || right->index == b.GetTailIndex() || right->index == b.GetHeadIndex() ) ) )
                    && isPassable1( true );

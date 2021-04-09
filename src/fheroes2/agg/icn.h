@@ -899,16 +899,12 @@ namespace ICN
         YELLOW_SMALFONT,
         BATTLESKIP,
         BATTLEWAIT,
-        BATTLEAUTO, // not in use anymore
-        BATTLESETS, // not in use anymore
         BUYMAX,
         BTNCONFIG,
         BTNBATTLEONLY,
-        BOAT12, // not in use anymore
-        BTNGIFT, // not in use anymore
         BTNGIFT_GOOD,
         BTNGIFT_EVIL,
-        BTNMIN,
+        NON_UNIFORM_GOOD_MIN_BUTTON,
         CSLMARKER,
 
         GRAY_FONT,
@@ -916,18 +912,29 @@ namespace ICN
 
         TROLL2MSL,
         LISTBOX_EVIL, // alias to LISTBOX, but black and white colored
+        MONSTER_SWITCH_LEFT_ARROW,
+        MONSTER_SWITCH_RIGHT_ARROW,
 
-        LASTICN, // just a marker, indicating end of the enumeration
+        NON_UNIFORM_GOOD_OKAY_BUTTON,
+        NON_UNIFORM_GOOD_CANCEL_BUTTON,
+        NON_UNIFORM_EVIL_OKAY_BUTTON,
+        NON_UNIFORM_EVIL_CANCEL_BUTTON,
+
+        UNIFORM_GOOD_MAX_BUTTON,
+        UNIFORM_GOOD_MIN_BUTTON,
+        UNIFORM_EVIL_MAX_BUTTON,
+        UNIFORM_EVIL_MIN_BUTTON,
+
+        WHITE_LARGE_FONT,
+
+        // IMPORTANT! Put any new entry just above this one.
+        LASTICN
     };
 
     const char * GetString( int );
-    int FromString( const char * );
     u32 AnimationFrame( int icn, u32, u32, bool = false );
     bool HighlyObjectSprite( int icn, u32 );
     int PORTxxxx( int heroId );
-
-    bool isBattleMonsterICN( int );
-    bool SkipLocalAlpha( int );
 
     int Get4Captain( int race );
     int Get4Building( int race );

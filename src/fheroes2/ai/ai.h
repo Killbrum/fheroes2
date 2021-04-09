@@ -24,12 +24,16 @@
 #define H2AI_H
 
 #include "gamedefs.h"
+#include "rand.h"
 
+class StreamBase;
 class Funds;
 class Castle;
 class HeroBase;
 class Heroes;
 class Kingdom;
+class Army;
+struct VecHeroes;
 namespace Maps
 {
     class Tiles;
@@ -43,7 +47,7 @@ namespace Battle
 
 namespace AI
 {
-    enum AI_TYPE
+    enum class AI_TYPE : int
     {
         NORMAL
     };
@@ -53,17 +57,6 @@ namespace AI
         WARRIOR,
         BUILDER,
         EXPLORER
-    };
-
-    enum modes_t
-    {
-        HERO_SKIP_TURN = 0x02000000,
-        HERO_WAITING = 0x04000000,
-        HERO_MOVED = 0x08000000,
-        HERO_SCOUT = 0x10000000,
-        HERO_HUNTER = 0x20000000,
-        HERO_COURIER = 0x40000000,
-        HERO_CHAMPION = 0x80000000
     };
 
     const double ARMY_STRENGTH_ADVANTAGE_SMALL = 1.3;
@@ -77,13 +70,14 @@ namespace AI
         virtual void CastleTurn( Castle & castle, bool defensive = false );
         virtual void BattleTurn( Battle::Arena & arena, const Battle::Unit & unit, Battle::Actions & actions );
         virtual void HeroTurn( Heroes & hero );
+        virtual void HeroesTurn( VecHeroes & ) {}
 
         virtual void revealFog( const Maps::Tiles & tile );
 
         virtual void HeroesAdd( const Heroes & hero );
         virtual void HeroesRemove( const Heroes & hero );
-        virtual void HeroesPreBattle( HeroBase & hero );
-        virtual void HeroesAfterBattle( HeroBase & hero );
+        virtual void HeroesPreBattle( HeroBase & hero, bool isAttacking );
+        virtual void HeroesAfterBattle( HeroBase & hero, bool wasAttacking );
         virtual void HeroesPostLoad( Heroes & hero );
         virtual bool HeroesCanMove( const Heroes & hero );
         virtual bool HeroesGetTask( Heroes & hero );
@@ -113,12 +107,16 @@ namespace AI
         int _personality = NONE;
 
         Base() {}
+
+    private:
+        friend StreamBase & operator<<( StreamBase &, const AI::Base & );
+        friend StreamBase & operator>>( StreamBase &, AI::Base & );
     };
 
-    Base & Get( AI_TYPE type = NORMAL );
+    Base & Get( AI_TYPE type = AI_TYPE::NORMAL );
 
     // functionality in ai_hero_action.cpp
-    void HeroesAction( Heroes & hero, s32 dst_index );
+    void HeroesAction( Heroes & hero, s32 dst_index, bool isDestination );
     bool HeroesValidObject( const Heroes & hero, s32 index );
     void HeroesMove( Heroes & hero );
 
@@ -127,6 +125,10 @@ namespace AI
     bool BuildIfEnoughResources( Castle & castle, int building, uint32_t minimumMultiplicator );
     uint32_t GetResourceMultiplier( const Castle & castle, uint32_t min, uint32_t max );
     void ReinforceHeroInCastle( Heroes & hero, Castle & castle, const Funds & budget );
+    void OptimizeTroopsOrder( Army & hero );
+
+    StreamBase & operator<<( StreamBase &, const AI::Base & );
+    StreamBase & operator>>( StreamBase &, AI::Base & );
 }
 
 #endif

@@ -22,12 +22,13 @@
 
 #include <string>
 
-#include "agg.h"
+#include "agg_image.h"
 #include "castle.h"
 #include "cursor.h"
 #include "dialog.h"
 #include "game.h"
 #include "heroes.h"
+#include "icn.h"
 #include "kingdom.h"
 #include "resource.h"
 #include "settings.h"
@@ -43,7 +44,7 @@ void Castle::OpenTavern( void )
     const std::string & message = world.GetRumors();
 
     fheroes2::Display & display = fheroes2::Display::instance();
-    Cursor & cursor = Cursor::Get();
+    const Cursor & cursor = Cursor::Get();
     cursor.Hide();
 
     Text text( tavern, Font::YELLOW_BIG );
@@ -99,10 +100,11 @@ void Castle::OpenTavern( void )
             cursor.Hide();
             fheroes2::Blit( tavernSprite, display, dst_pt.x, dst_pt.y );
 
-            if ( const u32 index = ICN::AnimationFrame( tavwin, 0, frame++ ) ) {
+            if ( const u32 index = ICN::AnimationFrame( tavwin, 0, frame ) ) {
                 const fheroes2::Sprite & s22 = fheroes2::AGG::GetICN( tavwin, index );
                 fheroes2::Blit( s22, display, dst_pt.x + s22.x(), dst_pt.y + s22.y() );
             }
+            ++frame;
 
             cursor.Show();
             display.render();

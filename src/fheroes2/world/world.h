@@ -61,7 +61,7 @@ struct MapObjects : public std::map<u32, MapObjectSimple *>
     void remove( u32 uid );
 };
 
-typedef std::map<s32, ListActions> MapActions;
+using MapActions = std::map<s32, ListActions>;
 
 struct CapturedObject
 {
@@ -127,10 +127,10 @@ struct CapturedObjects : std::map<s32, CapturedObject>
 struct EventDate
 {
     EventDate()
-        : computer( false )
-        , first( 0 )
+        : first( 0 )
         , subsequent( 0 )
         , colors( 0 )
+        , computer( false )
     {}
 
     void LoadFromMP2( StreamBuf );
@@ -139,19 +139,19 @@ struct EventDate
     bool isDeprecated( u32 date ) const;
 
     Funds resource;
-    bool computer;
     u32 first;
     u32 subsequent;
     int colors;
+    bool computer;
     std::string message;
 };
 
 StreamBase & operator<<( StreamBase &, const EventDate & );
 StreamBase & operator>>( StreamBase &, EventDate & );
 
-typedef std::list<std::string> Rumors;
-typedef std::list<EventDate> EventsDate;
-typedef std::vector<Maps::Tiles> MapsTiles;
+using Rumors = std::list<std::string>;
+using EventsDate = std::list<EventDate>;
+using MapsTiles = std::vector<Maps::Tiles>;
 
 class World : protected Size
 {
@@ -180,8 +180,8 @@ public:
 
     const Maps::Tiles & GetTiles( u32, u32 ) const;
     Maps::Tiles & GetTiles( u32, u32 );
-    const Maps::Tiles & GetTiles( s32 ) const;
-    Maps::Tiles & GetTiles( s32 );
+    const Maps::Tiles & GetTiles( const int32_t tileId ) const;
+    Maps::Tiles & GetTiles( const int32_t tileId );
 
     void InitKingdoms( void );
 
@@ -204,6 +204,8 @@ public:
     const Heroes * GetHeroesCondLoss( void ) const;
 
     CastleHeroes GetHeroes( const Castle & ) const;
+
+    void RescanAllHeroesPathPassable() const;
 
     const UltimateArtifact & GetUltimateArtifact( void ) const;
     bool DiggingForUltimateArtifact( const Point & );
@@ -262,13 +264,15 @@ public:
     size_t getRegionCount() const;
 
     bool isTileBlocked( int toTile, bool fromWater ) const;
-    bool isValidPath( int index, int direction ) const;
+    bool isValidPath( const int index, const int direction, const int heroColor ) const;
     uint32_t getDistance( const Heroes & hero, int targetIndex );
     std::list<Route::Step> getPath( const Heroes & hero, int targetIndex );
     void resetPathfinder();
 
     void ComputeStaticAnalysis();
     static u32 GetUniq( void );
+
+    uint32_t GetMapSeed() const;
 
 private:
     World()
@@ -319,8 +323,11 @@ private:
 
     // This data isn't serialized
     Maps::Indexes _allTeleporters;
+    Maps::Indexes _whirlpoolTiles;
     std::vector<MapRegion> _regions;
     PlayerWorldPathfinder _pathfinder;
+
+    uint32_t _seed;
 };
 
 StreamBase & operator<<( StreamBase &, const CapturedObject & );

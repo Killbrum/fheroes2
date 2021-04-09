@@ -32,6 +32,7 @@
 #include "kingdom.h"
 #include "race.h"
 #include "settings.h"
+#include "translations.h"
 #include "world.h"
 
 int ArtifactsModifiersResult( int type, const u8 * arts, u32 size, const HeroBase & base, std::string * strs )
@@ -162,14 +163,14 @@ void HeroBase::LoadDefaults( int type, int race )
 
             Spell spell = Skill::Primary::GetInitialSpell( race );
             if ( spell.isValid() )
-                AppendSpellToBook( spell, true );
+                spell_book.Append( spell );
         } break;
 
         case HeroBase::HEROES: {
             Spell spell = Skill::Primary::GetInitialSpell( race );
             if ( spell.isValid() ) {
                 SpellBookActivate();
-                AppendSpellToBook( spell, true );
+                spell_book.Append( spell );
             }
         } break;
 
@@ -215,9 +216,9 @@ void HeroBase::EditSpellBook( void )
     spell_book.Edit( *this );
 }
 
-Spell HeroBase::OpenSpellBook( int filter, bool canselect ) const
+Spell HeroBase::OpenSpellBook( const SpellBook::Filter filter, bool canCastSpell, std::function<void( const std::string & )> * statusCallback ) const
 {
-    return spell_book.Open( *this, filter, canselect );
+    return spell_book.Open( *this, filter, canCastSpell, statusCallback );
 }
 
 bool HeroBase::HaveSpellBook( void ) const
@@ -374,6 +375,15 @@ int HeroBase::GetLuckModificator( std::string * strs ) const
     result += GetArmy().GetLuckModificator( strs );
 
     return result;
+}
+
+double HeroBase::GetSpellcastStrength() const
+{
+    if ( GetSpells().empty() )
+        return 0.0;
+
+    // Benchmark for strength is 20 power * 20 knowledge (200 spell points) is 3000.0
+    return GetPower() * sqrt( GetSpellPoints() / 2 ) * 15.0;
 }
 
 bool HeroBase::CanCastSpell( const Spell & spell, std::string * res ) const

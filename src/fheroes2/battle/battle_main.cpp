@@ -21,8 +21,10 @@
  ***************************************************************************/
 
 #include <algorithm>
+#include <memory>
 
 #include "agg.h"
+#include "agg_image.h"
 #include "ai.h"
 #include "army.h"
 #include "artifact.h"
@@ -33,15 +35,16 @@
 #include "dialog.h"
 #include "game.h"
 #include "heroes_base.h"
+#include "icn.h"
 #include "kingdom.h"
-#include "settings.h"
+#include "logging.h"
 #include "skill.h"
 #include "text.h"
 #include "world.h"
 
 namespace Battle
 {
-    void PickupArtifactsAction( HeroBase &, HeroBase &, bool );
+    void PickupArtifactsAction( HeroBase &, HeroBase & );
     void EagleEyeSkillAction( HeroBase &, const SpellStorage &, bool );
     void NecromancySkillAction( HeroBase &, u32, bool );
 }
@@ -54,126 +57,185 @@ Battle::Result Battle::Loader( Army & army1, Army & army2, s32 mapsindex )
         // Check second army first so attacker would win by default
         if ( !army2.isValid() ) {
             result.army1 = RESULT_WINS;
-            DEBUG( DBG_BATTLE, DBG_WARN, "Invalid battle detected! Index " << mapsindex << ", Army: " << army2.String() );
+            DEBUG_LOG( DBG_BATTLE, DBG_WARN, "Invalid battle detected! Index " << mapsindex << ", Army: " << army2.String() );
         }
         else {
             result.army2 = RESULT_WINS;
-            DEBUG( DBG_BATTLE, DBG_WARN, "Invalid battle detected! Index " << mapsindex << ", Army: " << army1.String() );
+            DEBUG_LOG( DBG_BATTLE, DBG_WARN, "Invalid battle detected! Index " << mapsindex << ", Army: " << army1.String() );
         }
         return result;
     }
 
     // pre battle army1
-    if ( army1.GetCommander() ) {
-        if ( army1.GetCommander()->isCaptain() )
-            army1.GetCommander()->ActionPreBattle();
+    HeroBase * commander1 = army1.GetCommander();
+    uint32_t initialSpellPoints1 = 0;
+    if ( commander1 ) {
+        initialSpellPoints1 = commander1->GetSpellPoints();
+        if ( commander1->isCaptain() )
+            commander1->ActionPreBattle();
         else if ( army1.isControlAI() )
-            AI::Get().HeroesPreBattle( *army1.GetCommander() );
+            AI::Get().HeroesPreBattle( *commander1, true );
         else
-            army1.GetCommander()->ActionPreBattle();
+            commander1->ActionPreBattle();
     }
 
     // pre battle army2
-    if ( army2.GetCommander() ) {
-        if ( army2.GetCommander()->isCaptain() )
-            army2.GetCommander()->ActionPreBattle();
+    HeroBase * commander2 = army2.GetCommander();
+    uint32_t initialSpellPoints2 = 0;
+    if ( commander2 ) {
+        initialSpellPoints2 = commander2->GetSpellPoints();
+        if ( commander2->isCaptain() )
+            commander2->ActionPreBattle();
         else if ( army2.isControlAI() )
-            AI::Get().HeroesPreBattle( *army2.GetCommander() );
+            AI::Get().HeroesPreBattle( *commander2, false );
         else
-            army2.GetCommander()->ActionPreBattle();
+            commander2->ActionPreBattle();
     }
 
-    bool local = army1.isControlHuman() || army2.isControlHuman();
+    const bool isHumanBattle = army1.isControlHuman() || army2.isControlHuman();
+    bool showBattle = !Settings::Get().BattleAutoResolve() && isHumanBattle;
 
 #ifdef WITH_DEBUG
     if ( IS_DEBUG( DBG_BATTLE, DBG_TRACE ) )
-        local = true;
+        showBattle = true;
 #endif
 
-    if ( local )
+    if ( showBattle )
         AGG::ResetMixer();
 
-    Arena arena( army1, army2, mapsindex, local );
+    std::unique_ptr<Arena> arena( new Arena( army1, army2, mapsindex, showBattle ) );
 
-    DEBUG( DBG_BATTLE, DBG_INFO, "army1 " << army1.String() );
-    DEBUG( DBG_BATTLE, DBG_INFO, "army2 " << army2.String() );
+    DEBUG_LOG( DBG_BATTLE, DBG_INFO, "army1 " << army1.String() );
+    DEBUG_LOG( DBG_BATTLE, DBG_INFO, "army2 " << army2.String() );
 
-    while ( arena.BattleValid() )
-        arena.Turns();
+    while ( arena->BattleValid() ) {
+        arena->Turns();
+    }
 
-    const Result & result = arena.GetResult();
+    Result result = arena->GetResult();
 
-    HeroBase * hero_wins = ( result.army1 & RESULT_WINS ? army1.GetCommander() : ( result.army2 & RESULT_WINS ? army2.GetCommander() : NULL ) );
-    HeroBase * hero_loss = ( result.army1 & RESULT_LOSS ? army1.GetCommander() : ( result.army2 & RESULT_LOSS ? army2.GetCommander() : NULL ) );
-    const u32 loss_result = result.army1 & RESULT_LOSS ? result.army1 : result.army2;
+    HeroBase * hero_wins = ( result.army1 & RESULT_WINS ? commander1 : ( result.army2 & RESULT_WINS ? commander2 : NULL ) );
+    HeroBase * hero_loss = ( result.army1 & RESULT_LOSS ? commander1 : ( result.army2 & RESULT_LOSS ? commander2 : NULL ) );
+    u32 loss_result = result.army1 & RESULT_LOSS ? result.army1 : result.army2;
 
-    if ( local ) {
+    bool isWinnerHuman = hero_wins && hero_wins->isControlHuman();
+    bool transferArtifacts = ( hero_wins && hero_loss && !( ( RESULT_RETREAT | RESULT_SURRENDER ) & loss_result ) && hero_wins->isHeroes() && hero_loss->isHeroes() );
+    bool artifactsTransferred = !transferArtifacts;
+
+    bool battleSummaryShown = false;
+    // Check if it was an auto battle
+    if ( isHumanBattle && !showBattle ) {
+        if ( arena->DialogBattleSummary( result, transferArtifacts && isWinnerHuman, true ) ) {
+            // If dialog returns true we will restart battle in manual mode
+            showBattle = true;
+
+            // Reset army commander state
+            if ( commander1 )
+                commander1->SetSpellPoints( initialSpellPoints1 );
+            if ( commander2 )
+                commander2->SetSpellPoints( initialSpellPoints2 );
+
+            // Have to destroy old Arena instance first
+            arena.reset();
+            // Make sure to reset mixer before loading the battle interface
+            AGG::ResetMixer();
+
+            arena = std::unique_ptr<Arena>( new Arena( army1, army2, mapsindex, true ) );
+
+            while ( arena->BattleValid() ) {
+                arena->Turns();
+            }
+
+            // Override the result
+            result = arena->GetResult();
+            hero_wins = ( result.army1 & RESULT_WINS ? commander1 : ( result.army2 & RESULT_WINS ? commander2 : NULL ) );
+            hero_loss = ( result.army1 & RESULT_LOSS ? commander1 : ( result.army2 & RESULT_LOSS ? commander2 : NULL ) );
+            loss_result = result.army1 & RESULT_LOSS ? result.army1 : result.army2;
+
+            isWinnerHuman = hero_wins && hero_wins->isControlHuman();
+            transferArtifacts = ( hero_wins && hero_loss && !( ( RESULT_RETREAT | RESULT_SURRENDER ) & loss_result ) && hero_wins->isHeroes() && hero_loss->isHeroes() );
+            artifactsTransferred = !transferArtifacts;
+        }
+        else {
+            battleSummaryShown = true;
+            if ( isWinnerHuman ) {
+                artifactsTransferred = true;
+            }
+        }
+    }
+
+    if ( showBattle ) {
         AGG::ResetMixer();
 
         // fade arena
         const bool clearMessageLog
             = ( result.army1 & RESULT_RETREAT ) || ( result.army2 & RESULT_RETREAT ) || ( result.army1 & RESULT_SURRENDER ) || ( result.army2 & RESULT_SURRENDER );
-        arena.FadeArena( clearMessageLog );
+        arena->FadeArena( clearMessageLog );
+    }
 
-        // dialog summary
-        arena.DialogBattleSummary( result );
+    // final summary dialog
+    if ( isHumanBattle && !battleSummaryShown ) {
+        arena->DialogBattleSummary( result, transferArtifacts && isWinnerHuman, false );
+        if ( isWinnerHuman ) {
+            artifactsTransferred = true;
+        }
+    }
+
+    if ( !artifactsTransferred ) {
+        PickupArtifactsAction( *hero_wins, *hero_loss );
     }
 
     // save count troop
-    arena.GetForce1().SyncArmyCount( ( result.army1 & RESULT_WINS ) != 0 );
-    arena.GetForce2().SyncArmyCount( ( result.army2 & RESULT_WINS ) != 0 );
+    arena->GetForce1().SyncArmyCount( ( result.army1 & RESULT_WINS ) != 0 );
+    arena->GetForce2().SyncArmyCount( ( result.army2 & RESULT_WINS ) != 0 );
 
     // after battle army1
-    if ( army1.GetCommander() ) {
+    if ( commander1 ) {
         if ( army1.isControlAI() )
-            AI::Get().HeroesAfterBattle( *army1.GetCommander() );
+            AI::Get().HeroesAfterBattle( *commander1, true );
         else
-            army1.GetCommander()->ActionAfterBattle();
+            commander1->ActionAfterBattle();
     }
 
     // after battle army2
-    if ( army2.GetCommander() ) {
+    if ( commander2 ) {
         if ( army2.isControlAI() )
-            AI::Get().HeroesAfterBattle( *army2.GetCommander() );
+            AI::Get().HeroesAfterBattle( *commander2, false );
         else
-            army2.GetCommander()->ActionAfterBattle();
+            commander2->ActionAfterBattle();
     }
-
-    // pickup artifact
-    if ( hero_wins && hero_loss && !( ( RESULT_RETREAT | RESULT_SURRENDER ) & loss_result ) && hero_wins->isHeroes() && hero_loss->isHeroes() )
-        PickupArtifactsAction( *hero_wins, *hero_loss, hero_wins->isControlHuman() );
 
     // eagle eye capability
     if ( hero_wins && hero_loss && hero_wins->GetLevelSkill( Skill::Secondary::EAGLEEYE ) && hero_loss->isHeroes() )
-        EagleEyeSkillAction( *hero_wins, arena.GetUsageSpells(), hero_wins->isControlHuman() );
+        EagleEyeSkillAction( *hero_wins, arena->GetUsageSpells(), hero_wins->isControlHuman() );
 
     // necromancy capability
     if ( hero_wins && hero_wins->GetLevelSkill( Skill::Secondary::NECROMANCY ) )
         NecromancySkillAction( *hero_wins, result.killed, hero_wins->isControlHuman() );
 
-    DEBUG( DBG_BATTLE, DBG_INFO, "army1 " << army1.String() );
-    DEBUG( DBG_BATTLE, DBG_INFO, "army2 " << army1.String() );
+    DEBUG_LOG( DBG_BATTLE, DBG_INFO, "army1 " << army1.String() );
+    DEBUG_LOG( DBG_BATTLE, DBG_INFO, "army2 " << army1.String() );
 
     // update army
-    if ( army1.GetCommander() && army1.GetCommander()->isHeroes() ) {
+    if ( commander1 && commander1->isHeroes() ) {
         // hard reset army
         if ( !army1.isValid() || ( result.army1 & RESULT_RETREAT ) )
             army1.Reset( false );
     }
 
     // update army
-    if ( army2.GetCommander() && army2.GetCommander()->isHeroes() ) {
+    if ( commander2 && commander2->isHeroes() ) {
         // hard reset army
         if ( !army2.isValid() || ( result.army2 & RESULT_RETREAT ) )
             army2.Reset( false );
     }
 
-    DEBUG( DBG_BATTLE, DBG_INFO, "army1: " << ( result.army1 & RESULT_WINS ? "wins" : "loss" ) << ", army2: " << ( result.army2 & RESULT_WINS ? "wins" : "loss" ) );
+    DEBUG_LOG( DBG_BATTLE, DBG_INFO, "army1: " << ( result.army1 & RESULT_WINS ? "wins" : "loss" ) << ", army2: " << ( result.army2 & RESULT_WINS ? "wins" : "loss" ) );
 
     return result;
 }
 
-void Battle::PickupArtifactsAction( HeroBase & hero1, HeroBase & hero2, bool local )
+void Battle::PickupArtifactsAction( HeroBase & hero1, HeroBase & hero2 )
 {
     BagArtifacts & bag1 = hero1.GetBagArtifacts();
     BagArtifacts & bag2 = hero2.GetBagArtifacts();
@@ -185,13 +247,9 @@ void Battle::PickupArtifactsAction( HeroBase & hero1, HeroBase & hero2, bool loc
             art = Artifact::UNKNOWN;
         }
         else if ( art() != Artifact::UNKNOWN && art() != Artifact::MAGIC_BOOK ) {
-            BagArtifacts::iterator it = std::find( bag1.begin(), bag1.end(), Artifact( ( Artifact::UNKNOWN ) ) );
+            BagArtifacts::iterator it = std::find( bag1.begin(), bag1.end(), Artifact( Artifact::UNKNOWN ) );
             if ( bag1.end() != it ) {
                 *it = art;
-                if ( local ) {
-                    Game::PlayPickupSound();
-                    Dialog::ArtifactInfo( _( "You have captured an enemy artifact!" ), "", art );
-                }
             }
             art = Artifact::UNKNOWN;
         }
@@ -256,26 +314,10 @@ void Battle::NecromancySkillAction( HeroBase & hero, u32 killed, bool local )
     if ( 0 == killed || ( army.isFullHouse() && !army.HasMonster( Monster::SKELETON ) ) )
         return;
 
-    // check necromancy shrine build
-    u32 percent = 10 * world.GetKingdom( army.GetColor() ).GetCountNecromancyShrineBuild();
-
-    // check artifact
-    u32 acount = hero.HasArtifact( Artifact::SPADE_NECROMANCY );
-    if ( acount )
-        percent += acount * 10;
-
-    // fix over 60%
-    if ( percent > 60 )
-        percent = 60;
-
-    percent += hero.GetSecondaryValues( Skill::Secondary::NECROMANCY );
-
-    // hard fix overflow
-    if ( percent > 90 )
-        percent = 90;
+    const uint32_t necromancyPercent = GetNecromancyPercent( hero );
 
     const Monster mons( Monster::SKELETON );
-    uint32_t count = Monster::GetCountFromHitPoints( Monster::SKELETON, mons.GetHitPoints() * killed * percent / 100 );
+    uint32_t count = Monster::GetCountFromHitPoints( Monster::SKELETON, mons.GetHitPoints() * killed * necromancyPercent / 100 );
     if ( count == 0u )
         count = 1;
     army.JoinTroop( mons, count );
@@ -289,14 +331,14 @@ void Battle::NecromancySkillAction( HeroBase & hero, u32 killed, bool local )
 
         const fheroes2::Sprite & sf2 = fheroes2::AGG::GetICN( ICN::MONS32, mons.GetSpriteIndex() );
         fheroes2::Blit( sf2, sf1, ( sf1.width() - sf2.width() ) / 2, 0 );
-        Text text( GetString( count ), Font::SMALL );
+        Text text( std::to_string( count ), Font::SMALL );
         text.Blit( ( sf1.width() - text.w() ) / 2, sf2.height() + 3, sf1 );
         Game::PlayPickupSound();
 
         Dialog::SpriteInfo( "", msg, sf1 );
     }
 
-    DEBUG( DBG_BATTLE, DBG_TRACE, "raise: " << count << mons.GetMultiName() );
+    DEBUG_LOG( DBG_BATTLE, DBG_TRACE, "raise: " << count << mons.GetMultiName() );
 }
 
 u32 Battle::Result::AttackerResult( void ) const

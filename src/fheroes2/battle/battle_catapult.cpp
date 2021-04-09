@@ -24,7 +24,8 @@
 #include "artifact.h"
 #include "battle_command.h"
 #include "heroes_base.h"
-#include "settings.h"
+#include "logging.h"
+#include "rand.h"
 #include "skill.h"
 
 Battle::Catapult::Catapult( const HeroBase & hero )
@@ -61,7 +62,7 @@ Battle::Catapult::Catapult( const HeroBase & hero )
 u32 Battle::Catapult::GetDamage() const
 {
     if ( doubleDamageChance == 100 || doubleDamageChance >= Rand::Get( 1, 100 ) ) {
-        DEBUG( DBG_BATTLE, DBG_TRACE, "Catapult dealt double damage! (" << doubleDamageChance << "% chance)" );
+        DEBUG_LOG( DBG_BATTLE, DBG_TRACE, "Catapult dealt double damage! (" << doubleDamageChance << "% chance)" );
         return 2;
     }
 
@@ -143,12 +144,17 @@ int Battle::Catapult::GetTarget( const std::vector<u32> & values ) const
             targets.push_back( CAT_CENTRAL_TOWER );
     }
 
-    if ( targets.size() ) {
+    if ( !targets.empty() ) {
         // Miss chance is 25%
-        return canMiss && 6 > Rand::Get( 1, 20 ) ? static_cast<int>( CAT_MISS ) : ( 1 < targets.size() ? *Rand::Get( targets ) : targets.front() );
+        if ( canMiss && 6 > Rand::Get( 1, 20 ) ) {
+            return static_cast<int>( CAT_MISS );
+        }
+        else {
+            return Rand::Get( targets );
+        }
     }
 
-    DEBUG( DBG_BATTLE, DBG_TRACE, "target not found.." );
+    DEBUG_LOG( DBG_BATTLE, DBG_TRACE, "target not found.." );
 
     return 0;
 }

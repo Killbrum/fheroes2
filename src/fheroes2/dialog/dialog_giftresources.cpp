@@ -20,12 +20,16 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
-#include "agg.h"
+#include <sstream>
+
+#include "agg_image.h"
 #include "cursor.h"
 #include "dialog.h"
 #include "game.h"
+#include "icn.h"
 #include "settings.h"
 #include "text.h"
+#include "ui_window.h"
 #include "world.h"
 
 int32_t GetIndexClickRects( const std::vector<fheroes2::Rect> & rects )
@@ -53,8 +57,8 @@ struct SelectRecipientsColors
     int recipients;
     std::vector<fheroes2::Rect> positions;
 
-    SelectRecipientsColors( const Point & pos )
-        : colors( Settings::Get().GetPlayers().GetColors() & ~Settings::Get().GetPlayers().current_color )
+    SelectRecipientsColors( const Point & pos, int senderColor )
+        : colors( Settings::Get().GetPlayers().GetColors() & ~senderColor )
         , recipients( 0 )
     {
         positions.reserve( colors.size() );
@@ -63,7 +67,7 @@ struct SelectRecipientsColors
             const u32 current = std::distance( colors.begin(), it );
             const fheroes2::Sprite & sprite = fheroes2::AGG::GetICN( ICN::CELLWIN, 43 );
 
-            positions.push_back( fheroes2::Rect( pos.x + Game::GetStep4Player( current, sprite.width() + 15, colors.size() ), pos.y, sprite.width(), sprite.height() ) );
+            positions.emplace_back( pos.x + Game::GetStep4Player( current, sprite.width() + 15, colors.size() ), pos.y, sprite.width(), sprite.height() );
         }
     }
 
@@ -90,7 +94,7 @@ struct SelectRecipientsColors
         const s32 index = GetIndexClick();
 
         if ( index >= 0 ) {
-            const int & cols = colors[index];
+            const int cols = colors[index];
 
             if ( recipients & cols )
                 recipients &= ~cols;
@@ -107,23 +111,21 @@ struct SelectRecipientsColors
 struct ResourceBar
 {
     Funds & resource;
-    Point pos;
     std::vector<fheroes2::Rect> positions;
 
     ResourceBar( Funds & funds, s32 posx, s32 posy )
         : resource( funds )
-        , pos( posx, posy )
     {
         positions.reserve( 7 );
         const fheroes2::Sprite & sprite = fheroes2::AGG::GetICN( ICN::TRADPOST, 7 );
 
-        positions.push_back( fheroes2::Rect( posx, posy, sprite.width(), sprite.height() ) );
-        positions.push_back( fheroes2::Rect( posx + 40, posy, sprite.width(), sprite.height() ) );
-        positions.push_back( fheroes2::Rect( posx + 80, posy, sprite.width(), sprite.height() ) );
-        positions.push_back( fheroes2::Rect( posx + 120, posy, sprite.width(), sprite.height() ) );
-        positions.push_back( fheroes2::Rect( posx + 160, posy, sprite.width(), sprite.height() ) );
-        positions.push_back( fheroes2::Rect( posx + 200, posy, sprite.width(), sprite.height() ) );
-        positions.push_back( fheroes2::Rect( posx + 240, posy, sprite.width(), sprite.height() ) );
+        positions.emplace_back( posx, posy, sprite.width(), sprite.height() );
+        positions.emplace_back( posx + 40, posy, sprite.width(), sprite.height() );
+        positions.emplace_back( posx + 80, posy, sprite.width(), sprite.height() );
+        positions.emplace_back( posx + 120, posy, sprite.width(), sprite.height() );
+        positions.emplace_back( posx + 160, posy, sprite.width(), sprite.height() );
+        positions.emplace_back( posx + 200, posy, sprite.width(), sprite.height() );
+        positions.emplace_back( posx + 240, posy, sprite.width(), sprite.height() );
     }
 
     static void RedrawResource( int type, s32 count, s32 posx, s32 posy )
@@ -197,29 +199,26 @@ struct ResourceBar
     }
 };
 
-void Dialog::MakeGiftResource( void )
+void Dialog::MakeGiftResource( Kingdom & kingdom )
 {
     Cursor & cursor = Cursor::Get();
     fheroes2::Display & display = fheroes2::Display::instance();
     LocalEvent & le = LocalEvent::Get();
-    const Settings & conf = Settings::Get();
 
     cursor.Hide();
     cursor.SetThemes( cursor.POINTER );
 
-    Dialog::FrameBorder frameborder( Size( 320, 224 ) );
-    const Rect & box = frameborder.GetArea();
+    const fheroes2::StandardWindow frameborder( 320, 224 );
+    const Rect box( frameborder.activeArea() );
 
-    Kingdom & myKingdom = world.GetKingdom( conf.CurrentColor() );
-
-    Funds funds1( myKingdom.GetFunds() );
+    Funds funds1( kingdom.GetFunds() );
     Funds funds2;
     Text text;
 
     text.Set( "Select Recipients" );
     text.Blit( box.x + ( box.w - text.w() ) / 2, box.y + 5 );
 
-    SelectRecipientsColors selector( Point( box.x + 65, box.y + 28 ) );
+    SelectRecipientsColors selector( Point( box.x + 65, box.y + 28 ), kingdom.GetColor() );
     selector.Redraw();
 
     text.Set( "Your Funds" );
@@ -255,7 +254,7 @@ void Dialog::MakeGiftResource( void )
                 btnGroups.button( 0 ).enable();
 
             if ( count != new_count ) {
-                funds1 = myKingdom.GetFunds();
+                funds1 = kingdom.GetFunds();
                 funds2.Reset();
                 info1.Redraw();
                 info2.Redraw();
@@ -293,7 +292,7 @@ void Dialog::MakeGiftResource( void )
         event.subsequent = 0;
         event.colors = selector.recipients;
         event.message = "Gift from %{name}";
-        const Player * player = Settings::Get().GetPlayers().GetCurrent();
+        const Player * player = Settings::Get().GetPlayers().Get( kingdom.GetColor() );
         if ( player )
             StringReplace( event.message, "%{name}", player->GetName() );
 
@@ -301,6 +300,6 @@ void Dialog::MakeGiftResource( void )
 
         if ( 1 < count )
             funds2 *= count;
-        myKingdom.OddFundsResource( funds2 );
+        kingdom.OddFundsResource( funds2 );
     }
 }

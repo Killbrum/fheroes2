@@ -23,6 +23,7 @@
 #include <algorithm>
 
 #include "agg.h"
+#include "agg_image.h"
 #include "ai.h"
 #include "battle_board.h"
 #include "battle_tower.h"
@@ -32,14 +33,15 @@
 #include "game.h"
 #include "game_static.h"
 #include "ground.h"
+#include "icn.h"
 #include "kingdom.h"
+#include "logging.h"
 #include "luck.h"
 #include "maps_tiles.h"
 #include "morale.h"
 #include "payment.h"
 #include "profit.h"
 #include "race.h"
-#include "settings.h"
 #include "text.h"
 #include "world.h"
 
@@ -161,7 +163,7 @@ void Castle::LoadFromMP2( StreamBuf st )
         // default building
         building |= DWELLING_MONSTER1;
         u32 dwelling2 = 0;
-        switch ( Settings::Get().GameDifficulty() ) {
+        switch ( Game::getDifficulty() ) {
         case Difficulty::EASY:
             dwelling2 = 75;
             break;
@@ -182,7 +184,7 @@ void Castle::LoadFromMP2( StreamBuf st )
     }
 
     // custom troops
-    bool custom_troops = st.get();
+    bool custom_troops = ( st.get() != 0 );
     if ( custom_troops ) {
         Troop troops[5];
 
@@ -330,8 +332,8 @@ void Castle::PostLoad( void )
     SetModes( ALLOWBUILD );
 
     // end
-    DEBUG( DBG_GAME, DBG_INFO,
-           ( building & BUILD_CASTLE ? "castle" : "town" ) << ": " << name << ", color: " << Color::String( GetColor() ) << ", race: " << Race::String( race ) );
+    DEBUG_LOG( DBG_GAME, DBG_INFO,
+               ( building & BUILD_CASTLE ? "castle" : "town" ) << ": " << name << ", color: " << Color::String( GetColor() ) << ", race: " << Race::String( race ) );
 }
 
 Captain & Castle::GetCaptain( void )
@@ -517,7 +519,7 @@ void Castle::ActionNewWeek( void )
                     growth += GetGrownWel2();
 
                 if ( isControlAI() )
-                    growth *= Difficulty::GetUnitGrowthBonus( Settings::Get().GameDifficulty() );
+                    growth = static_cast<uint32_t>( growth * Difficulty::GetUnitGrowthBonus( Game::getDifficulty() ) );
 
                 // neutral town: half population (normal for begin month)
                 if ( isNeutral && !world.BeginMonth() )
@@ -979,7 +981,7 @@ Heroes * Castle::RecruitHero( Heroes * hero )
     if ( Settings::Get().ExtCastleOneHeroHiredEveryWeek() )
         SetModes( DISABLEHIRES );
 
-    DEBUG( DBG_GAME, DBG_INFO, name << ", recruit: " << hero->GetName() );
+    DEBUG_LOG( DBG_GAME, DBG_INFO, name << ", recruit: " << hero->GetName() );
 
     return hero;
 }
@@ -1021,7 +1023,6 @@ bool Castle::RecruitMonster( const Troop & troop, bool showDialog )
         return false;
     }
 
-    Monster monster = troop;
     uint32_t count = troop.GetCount();
 
     // fix count
@@ -1029,17 +1030,17 @@ bool Castle::RecruitMonster( const Troop & troop, bool showDialog )
         count = dwelling[dwellingIndex];
 
     // buy
-    const payment_t paymentCosts = monster.GetCost() * count;
+    const payment_t paymentCosts = troop.GetCost();
     Kingdom & kingdom = GetKingdom();
 
     if ( !kingdom.AllowPayment( paymentCosts ) )
         return false;
 
     // first: guard army join
-    if ( !GetArmy().JoinTroop( monster, count ) ) {
+    if ( !GetArmy().JoinTroop( troop ) ) {
         CastleHeroes heroes = world.GetHeroes( *this );
 
-        if ( !heroes.Guest() || !heroes.Guest()->GetArmy().JoinTroop( monster, count ) ) {
+        if ( !heroes.Guest() || !heroes.Guest()->GetArmy().JoinTroop( troop ) ) {
             if ( showDialog ) {
                 Dialog::Message( "", _( "There is no room in the garrison for this army." ), Font::BIG, Dialog::OK );
             }
@@ -1050,7 +1051,7 @@ bool Castle::RecruitMonster( const Troop & troop, bool showDialog )
     kingdom.OddFundsResource( paymentCosts );
     dwelling[dwellingIndex] -= count;
 
-    DEBUG( DBG_GAME, DBG_TRACE, name << " recruit: " << monster.GetMultiName() << "(" << count << ")" );
+    DEBUG_LOG( DBG_GAME, DBG_TRACE, name << " recruit: " << troop.GetMultiName() << "(" << count << ")" );
 
     return true;
 }
@@ -1064,8 +1065,8 @@ bool Castle::RecruitMonsterFromDwelling( uint32_t dw, uint32_t count, bool force
         if ( force ) {
             Troop * weak = GetArmy().GetWeakestTroop();
             if ( weak && weak->GetStrength() < troop.GetStrength() ) {
-                DEBUG( DBG_GAME, DBG_INFO,
-                       name << ": " << troop.GetCount() << " " << troop.GetMultiName() << " replace " << weak->GetCount() << " " << weak->GetMultiName() );
+                DEBUG_LOG( DBG_GAME, DBG_INFO,
+                           name << ": " << troop.GetCount() << " " << troop.GetMultiName() << " replace " << weak->GetCount() << " " << weak->GetMultiName() );
                 weak->Set( troop );
                 return true;
             }
@@ -1588,7 +1589,7 @@ bool Castle::BuyBuilding( u32 build )
     // disable day build
     ResetModes( ALLOWBUILD );
 
-    DEBUG( DBG_GAME, DBG_INFO, name << " build " << GetStringBuilding( build, race ) );
+    DEBUG_LOG( DBG_GAME, DBG_INFO, name << " build " << GetStringBuilding( build, race ) );
     return true;
 }
 
@@ -1714,7 +1715,7 @@ int Castle::GetICNBoat( int race )
         break;
     }
 
-    DEBUG( DBG_GAME, DBG_WARN, "return unknown" );
+    DEBUG_LOG( DBG_GAME, DBG_WARN, "return unknown" );
     return ICN::UNKNOWN;
 }
 
@@ -2077,9 +2078,9 @@ int Castle::GetICNBuilding( u32 build, int race )
         }
     }
 
-    DEBUG( DBG_GAME, DBG_WARN,
-           "return unknown"
-               << ", race: " << Race::String( race ) << ", build: " << Castle::GetStringBuilding( build, race ) << ", " << build );
+    DEBUG_LOG( DBG_GAME, DBG_WARN,
+               "return unknown"
+                   << ", race: " << Race::String( race ) << ", build: " << Castle::GetStringBuilding( build, race ) << ", " << build );
 
     return ICN::UNKNOWN;
 }
@@ -2311,12 +2312,12 @@ std::string Castle::String( void ) const
     return os.str();
 }
 
-int Castle::GetAttackModificator( std::string * ) const
+int Castle::GetAttackModificator( const std::string * ) const
 {
     return 0;
 }
 
-int Castle::GetDefenseModificator( std::string * ) const
+int Castle::GetDefenseModificator( const std::string * ) const
 {
     return 0;
 }
@@ -2337,7 +2338,7 @@ int Castle::GetPowerModificator( std::string * strs ) const
     return result;
 }
 
-int Castle::GetKnowledgeModificator( std::string * ) const
+int Castle::GetKnowledgeModificator( const std::string * ) const
 {
     return 0;
 }
@@ -2412,6 +2413,45 @@ Army & Castle::GetActualArmy( void )
     CastleHeroes heroes = world.GetHeroes( *this );
     Heroes * hero = heroes.GuardFirst();
     return hero ? hero->GetArmy() : army;
+}
+
+double Castle::GetGarrisonStrength( const Heroes * attackingHero ) const
+{
+    double totalStrength = 0;
+
+    CastleHeroes heroes = world.GetHeroes( *this );
+    if ( heroes.Guest() ) {
+        totalStrength += heroes.Guest()->GetArmy().GetStrength();
+    }
+    if ( Settings::Get().ExtCastleAllowGuardians() && heroes.Guard() ) {
+        totalStrength += heroes.Guard()->GetArmy().GetStrength();
+    }
+    else {
+        totalStrength += army.GetStrength();
+    }
+
+    // Add castle bonus if there are any troops defending it
+    if ( isCastle() && totalStrength > 1 ) {
+        const Battle::Tower tower( *this, Battle::TWR_CENTER );
+        const double towerStr = tower.GetStrengthWithBonus( tower.GetBonus(), 0 );
+
+        totalStrength += towerStr;
+        if ( isBuild( BUILD_LEFTTURRET ) ) {
+            totalStrength += towerStr / 2;
+        }
+        if ( isBuild( BUILD_RIGHTTURRET ) ) {
+            totalStrength += towerStr / 2;
+        }
+
+        if ( attackingHero && ( !attackingHero->GetArmy().isMeleeDominantArmy() || attackingHero->HasSecondarySkill( Skill::Secondary::BALLISTICS ) ) ) {
+            totalStrength *= isBuild( BUILD_MOAT ) ? 1.2 : 1.15;
+        }
+        else {
+            // heavy penalty if no ballistics skill and army is melee infantry based
+            totalStrength *= isBuild( BUILD_MOAT ) ? 1.45 : 1.25;
+        }
+    }
+    return totalStrength;
 }
 
 bool Castle::AllowBuyBoat( void ) const
@@ -2798,4 +2838,17 @@ std::string Castle::GetDescriptionBuilding( u32 build ) const
     }
 
     return res;
+}
+
+std::string Castle::buildingStatusMessage( const uint32_t buildingId ) const
+{
+    // Check if building is a monster dwelling or its upgraded version
+    if ( ( buildingId & DWELLING_MONSTERS ) == 0 && ( buildingId & DWELLING_UPGRADES ) == 0 ) {
+        return GetStringBuilding( buildingId );
+    }
+
+    const Monster monster( race, buildingId );
+    std::string msgStatus = _( "Recruit %{name}" );
+    StringReplace( msgStatus, "%{name}", monster.GetMultiName() );
+    return msgStatus;
 }

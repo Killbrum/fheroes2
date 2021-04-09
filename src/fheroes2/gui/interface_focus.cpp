@@ -51,14 +51,14 @@ void Interface::Basic::SetFocus( Heroes * hero )
 
         GetButtonsArea().Redraw();
 
-        iconsPanel.Select( *hero );
+        iconsPanel.Select( hero );
         gameArea.SetCenter( hero->GetCenter() );
-        statusWindow.SetState( STATUS_ARMY );
+        statusWindow.SetState( StatusType::STATUS_ARMY );
 
         const int heroIndexPos = hero->GetIndex();
         if ( !Game::ChangeMusicDisabled() && heroIndexPos >= 0 ) {
-            AGG::PlayMusic( MUS::FromGround( world.GetTiles( heroIndexPos ).GetGround() ) );
             Game::EnvironmentSoundMixer();
+            AGG::PlayMusic( MUS::FromGround( world.GetTiles( heroIndexPos ).GetGround() ), true, true );
         }
     }
 }
@@ -79,12 +79,12 @@ void Interface::Basic::SetFocus( Castle * castle )
 
         GetButtonsArea().Redraw();
 
-        iconsPanel.Select( *castle );
+        iconsPanel.Select( castle );
         gameArea.SetCenter( castle->GetCenter() );
-        statusWindow.SetState( STATUS_FUNDS );
+        statusWindow.SetState( StatusType::STATUS_FUNDS );
 
-        AGG::PlayMusic( MUS::FromGround( world.GetTiles( castle->GetIndex() ).GetGround() ) );
         Game::EnvironmentSoundMixer();
+        AGG::PlayMusic( MUS::FromGround( world.GetTiles( castle->GetIndex() ).GetGround() ), true, true );
     }
 }
 
@@ -177,17 +177,20 @@ Army * Interface::GetFocusArmy()
 {
     Player * player = Settings::Get().GetPlayers().GetCurrent();
 
-    if ( player == NULL )
-        return NULL;
+    if ( player == nullptr )
+        return nullptr;
 
-    if ( player->GetFocus().GetHeroes() ) {
-        return &player->GetFocus().GetHeroes()->GetArmy();
-    }
-    else if ( player->GetFocus().GetCastle() ) {
-        return &player->GetFocus().GetCastle()->GetArmy();
+    Heroes * focusedHero = player->GetFocus().GetHeroes();
+    if ( focusedHero != nullptr ) {
+        return &focusedHero->GetArmy();
     }
 
-    return NULL;
+    Castle * focusedCastle = player->GetFocus().GetCastle();
+    if ( focusedCastle != nullptr ) {
+        return &focusedCastle->GetArmy();
+    }
+
+    return nullptr;
 }
 
 Point Interface::GetFocusCenter( void )
@@ -215,7 +218,7 @@ void Interface::Basic::RedrawFocus( void )
         iconsPanel.SetRedraw();
     }
     else if ( type == FOCUS_HEROES && !iconsPanel.IsSelected( ICON_HEROES ) ) {
-        iconsPanel.Select( *GetFocusHeroes() );
+        iconsPanel.Select( GetFocusHeroes() );
         iconsPanel.SetRedraw();
     }
 
@@ -224,7 +227,7 @@ void Interface::Basic::RedrawFocus( void )
         iconsPanel.SetRedraw();
     }
     else if ( type == FOCUS_CASTLE && !iconsPanel.IsSelected( ICON_CASTLES ) ) {
-        iconsPanel.Select( *GetFocusCastle() );
+        iconsPanel.Select( GetFocusCastle() );
         iconsPanel.SetRedraw();
     }
 

@@ -43,6 +43,7 @@ namespace Interface
         PlayersInfo( bool /* show name */, bool /* show race */, bool /* show swap button */ );
 
         void UpdateInfo( Players &, const Point & opponents, const Point & classes );
+        bool SwapPlayers( Player & player1, Player & player2 ) const;
 
         Player * GetFromOpponentClick( const Point & pt );
         Player * GetFromOpponentNameClick( const Point & pt );
@@ -50,6 +51,7 @@ namespace Interface
         Player * GetFromClassClick( const Point & pt );
 
         void RedrawInfo( bool show_play_info = false ) const;
+        void resetSelection();
         bool QueueEventProcessing( void );
 
         bool show_name;

@@ -21,13 +21,23 @@
  ***************************************************************************/
 
 #include "engine.h"
+#include "font.h"
+#include "localevent.h"
+#include "logging.h"
 #include "sdlnet.h"
-#include "system.h"
+
+#if defined( FHEROES2_VITA )
+#include <psp2/kernel/processmgr.h>
+#include <psp2/power.h>
+
+// allocating memory for application on Vita
+int _newlib_heap_size_user = 192 * 1024 * 1024;
+#endif
 
 namespace Mixer
 {
-    void Init( void );
-    void Quit( void );
+    void Init();
+    void Quit();
 }
 
 #ifdef WITH_AUDIOCD
@@ -38,18 +48,21 @@ namespace Cdrom
 }
 #endif
 
-bool SDL::Init( const u32 system )
+bool SDL::Init( const uint32_t system )
 {
-    if ( System::isRunning() )
-        return false;
-
     if ( 0 > SDL_Init( system ) ) {
-        ERROR( SDL_GetError() );
+        ERROR_LOG( SDL_GetError() );
         return false;
     }
 
     if ( SDL_INIT_AUDIO & system )
         Mixer::Init();
+#if SDL_VERSION_ATLEAST( 2, 0, 0 )
+    if ( SDL_INIT_GAMECONTROLLER & system ) {
+        LocalEvent::Get().OpenController();
+    }
+    LocalEvent::Get().OpenTouchpad();
+#endif
 #ifdef WITH_AUDIOCD
     if ( SDL_INIT_CDROM & system )
         Cdrom::Open();
@@ -66,18 +79,11 @@ bool SDL::Init( const u32 system )
     SDL_EnableKeyRepeat( SDL_DEFAULT_REPEAT_DELAY, SDL_DEFAULT_REPEAT_INTERVAL );
 #endif
 
-    System::CreateTrayIcon( true );
-    System::PowerManagerOff( true );
-    Surface::SetDefaultColorKey( 0xFF, 0, 0xFF );
-
     return true;
 }
 
-void SDL::Quit( void )
+void SDL::Quit()
 {
-    System::CreateTrayIcon( false );
-    System::PowerManagerOff( false );
-
 #ifdef WITH_NET
     Network::Quit();
 #endif
@@ -88,13 +94,35 @@ void SDL::Quit( void )
     if ( SubSystem( SDL_INIT_CDROM ) )
         Cdrom::Close();
 #endif
+#if SDL_VERSION_ATLEAST( 2, 0, 0 )
+    if ( SubSystem( SDL_INIT_GAMECONTROLLER ) ) {
+        LocalEvent::Get().CloseController();
+    }
+#endif
     if ( SubSystem( SDL_INIT_AUDIO ) )
         Mixer::Quit();
 
     SDL_Quit();
 }
 
-bool SDL::SubSystem( const u32 system )
+bool SDL::SubSystem( const uint32_t system )
 {
-    return system & SDL_WasInit( system );
+    return ( system & SDL_WasInit( system ) ) != 0;
+}
+
+void InitHardware()
+{
+#if defined( FHEROES2_VITA )
+    scePowerSetArmClockFrequency( 444 );
+    scePowerSetBusClockFrequency( 222 );
+    scePowerSetGpuClockFrequency( 222 );
+    scePowerSetGpuXbarClockFrequency( 166 );
+#endif
+}
+
+void CloseHardware()
+{
+#if defined( FHEROES2_VITA )
+    sceKernelExitProcess( 0 );
+#endif
 }

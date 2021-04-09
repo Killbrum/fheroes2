@@ -21,16 +21,18 @@
  ***************************************************************************/
 
 #include "interface_border.h"
-#include "agg.h"
+#include "agg_image.h"
 #include "game_interface.h"
+#include "icn.h"
+#include "localevent.h"
 #include "maps.h"
 #include "settings.h"
 #include "ui_tool.h"
 
-void Interface::GameBorderRedraw( void )
+void Interface::GameBorderRedraw( const bool viewWorldMode )
 {
     const Settings & conf = Settings::Get();
-    if ( conf.ExtGameHideInterface() )
+    if ( conf.ExtGameHideInterface() && !viewWorldMode )
         return;
 
     fheroes2::Display & display = fheroes2::Display::instance();
@@ -103,10 +105,14 @@ void Interface::GameBorderRedraw( void )
     srcrt.height = TILEWIDTH;
     dstpt.x = displayWidth - RADARWIDTH - 2 * BORDERWIDTH;
     dstpt.y = srcrt.y;
-    for ( int32_t i = 0; i < count_h + 1; ++i ) {
+
+    const int32_t countHMiddleBorder = viewWorldMode ? 0 : count_h;
+
+    for ( int32_t i = 0; i < countHMiddleBorder + 1; ++i ) {
         fheroes2::Blit( icnadv, srcrt.x, srcrt.y, display, dstpt.x, dstpt.y, srcrt.width, srcrt.height );
         dstpt.y += TILEWIDTH;
     }
+
     srcrt.y += TILEWIDTH;
     srcrt.height = icnadv.height() - srcrt.y;
     fheroes2::Blit( icnadv, srcrt.x, srcrt.y, display, dstpt.x, dstpt.y, srcrt.width, srcrt.height );
@@ -161,6 +167,9 @@ void Interface::GameBorderRedraw( void )
     fheroes2::Blit( icnadv, srcrt.x, srcrt.y, display, dstpt.x, dstpt.y, srcrt.width, srcrt.height );
     dstpt.y = srcrt.y + BORDERWIDTH + count_icons * 32;
     srcrt.y = srcrt.y + BORDERWIDTH + 4 * 32;
+    if ( viewWorldMode && displayHeight > fheroes2::Display::DEFAULT_HEIGHT ) {
+        dstpt.y = 464;
+    }
     fheroes2::Blit( icnadv, srcrt.x, srcrt.y, display, dstpt.x, dstpt.y, srcrt.width, srcrt.height );
 }
 
@@ -178,12 +187,12 @@ const Rect & Interface::BorderWindow::GetArea( void ) const
     return area;
 }
 
-void Interface::BorderWindow::Redraw( void )
+void Interface::BorderWindow::Redraw() const
 {
     Dialog::FrameBorder::RenderRegular( border.GetRect() );
 }
 
-void Interface::BorderWindow::SetPosition( s32 px, s32 py, u32 pw, u32 ph )
+void Interface::BorderWindow::SetPosition( int32_t px, int32_t py, uint32_t pw, uint32_t ph )
 {
     area.w = pw;
     area.h = ph;
@@ -191,10 +200,10 @@ void Interface::BorderWindow::SetPosition( s32 px, s32 py, u32 pw, u32 ph )
     SetPosition( px, py );
 }
 
-void Interface::BorderWindow::SetPosition( s32 px, s32 py )
+void Interface::BorderWindow::SetPosition( int32_t px, int32_t py )
 {
     if ( Settings::Get().ExtGameHideInterface() ) {
-        fheroes2::Display & display = fheroes2::Display::instance();
+        const fheroes2::Display & display = fheroes2::Display::instance();
 
         if ( px + area.w < 0 )
             px = 0;
@@ -220,7 +229,7 @@ void Interface::BorderWindow::SetPosition( s32 px, s32 py )
 
 bool Interface::BorderWindow::QueueEventProcessing( void )
 {
-    Settings & conf = Settings::Get();
+    const Settings & conf = Settings::Get();
     LocalEvent & le = LocalEvent::Get();
 
     if ( conf.ExtGameHideInterface() && le.MousePressLeft( border.GetTop() ) ) {
@@ -234,8 +243,8 @@ bool Interface::BorderWindow::QueueEventProcessing( void )
         moveIndicator.reset();
         fheroes2::DrawBorder( moveIndicator, fheroes2::GetColorId( 0xD0, 0xC0, 0x48 ), 6 );
 
-        const s32 ox = mp.x - pos.x;
-        const s32 oy = mp.y - pos.y;
+        const int32_t ox = mp.x - pos.x;
+        const int32_t oy = mp.y - pos.y;
 
         cursor.Hide();
         moveIndicator.setPosition( pos.x, pos.y );

@@ -21,12 +21,14 @@
  ***************************************************************************/
 
 #include "interface_buttons.h"
-#include "agg.h"
+#include "agg_image.h"
 #include "dialog.h"
 #include "game.h"
 #include "game_interface.h"
 #include "heroes.h"
+#include "icn.h"
 #include "settings.h"
+#include "text.h"
 #include "world.h"
 
 Interface::ButtonsArea::ButtonsArea( Basic & basic )
@@ -68,28 +70,28 @@ void Interface::ButtonsArea::SetPos( s32 ox, s32 oy )
     buttonNextHero.setPosition( ox, oy );
     nextHeroRect = buttonNextHero.area();
 
-    buttonMovement.setPosition( nextHeroRect.x + nextHeroRect.w, oy );
+    buttonMovement.setPosition( nextHeroRect.x + nextHeroRect.width, oy );
     movementRect = buttonMovement.area();
 
-    buttonKingdom.setPosition( movementRect.x + movementRect.w, oy );
+    buttonKingdom.setPosition( movementRect.x + movementRect.width, oy );
     kingdomRect = buttonKingdom.area();
 
-    buttonSpell.setPosition( kingdomRect.x + kingdomRect.w, oy );
+    buttonSpell.setPosition( kingdomRect.x + kingdomRect.width, oy );
     spellRect = buttonSpell.area();
 
     // Bottom row
-    oy = nextHeroRect.y + nextHeroRect.h;
+    oy = nextHeroRect.y + nextHeroRect.height;
 
     buttonEndTurn.setPosition( ox, oy );
     endTurnRect = buttonEndTurn.area();
 
-    buttonAdventure.setPosition( endTurnRect.x + endTurnRect.w, oy );
+    buttonAdventure.setPosition( endTurnRect.x + endTurnRect.width, oy );
     adventureRect = buttonAdventure.area();
 
-    buttonFile.setPosition( adventureRect.x + adventureRect.w, oy );
+    buttonFile.setPosition( adventureRect.x + adventureRect.width, oy );
     fileRect = buttonFile.area();
 
-    buttonSystem.setPosition( fileRect.x + fileRect.w, oy );
+    buttonSystem.setPosition( fileRect.x + fileRect.width, oy );
     systemRect = buttonSystem.area();
 }
 
@@ -116,23 +118,27 @@ void Interface::ButtonsArea::Redraw( void )
 
 void Interface::ButtonsArea::ResetButtons( void )
 {
-    if ( buttonNextHero.isEnabled() )
+    if ( buttonNextHero.isEnabled() ) {
         buttonNextHero.drawOnRelease();
+    }
+
     buttonMovement.drawOnRelease();
     buttonKingdom.drawOnRelease();
-    if ( buttonSpell.isEnabled() )
+
+    if ( buttonSpell.isEnabled() ) {
         buttonSpell.drawOnRelease();
+    }
+
     buttonEndTurn.drawOnRelease();
     buttonAdventure.drawOnRelease();
     buttonFile.drawOnRelease();
     buttonSystem.drawOnRelease();
-    LocalEvent & le = LocalEvent::Get();
-    le.ResetPressLeft();
+
+    LocalEvent::Get().ResetPressLeft();
 }
 
 int Interface::ButtonsArea::QueueEventProcessing( void )
 {
-    Settings & conf = Settings::Get();
     LocalEvent & le = LocalEvent::Get();
     int res = Game::CANCEL;
 
@@ -147,9 +153,8 @@ int Interface::ButtonsArea::QueueEventProcessing( void )
     le.MousePressLeft( fileRect ) ? buttonFile.drawOnPress() : buttonFile.drawOnRelease();
     le.MousePressLeft( systemRect ) ? buttonSystem.drawOnPress() : buttonSystem.drawOnRelease();
 
-    if ( conf.ShowButtons() &&
-         // move border window
-         BorderWindow::QueueEventProcessing() ) {
+    if ( Settings::Get().ShowButtons() && BorderWindow::QueueEventProcessing() ) {
+        // Move border window. No other action is required.
     }
     else if ( buttonNextHero.isEnabled() && le.MouseClickLeft( nextHeroRect ) ) {
         interface.EventNextHero();
@@ -204,7 +209,7 @@ void Interface::ButtonsArea::SetButtonStatus()
     else
         buttonMovement.enable();
 
-    if ( currentHero == NULL || !currentHero->HaveSpellBook() )
+    if ( currentHero == NULL || !currentHero->HaveSpellBook() || !currentHero->MayCastAdventureSpells() )
         buttonSpell.disable();
     else
         buttonSpell.enable();

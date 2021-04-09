@@ -24,11 +24,10 @@
 
 #include "army_troop.h"
 #include "color.h"
-#include "dialog.h"
 #include "game.h"
+#include "logging.h"
 #include "maps_objects.h"
 #include "mp2.h"
-#include "settings.h"
 
 #define SIZEMESSAGE 400
 
@@ -69,10 +68,10 @@ void MapEvent::LoadFromMP2( s32 index, StreamBuf st )
         artifact = st.getLE16();
 
         // allow computer
-        computer = st.get();
+        computer = ( st.get() != 0 );
 
         // cancel event after first visit
-        cancel = st.get();
+        cancel = ( st.get() != 0 );
 
         st.skip( 10 );
 
@@ -98,12 +97,12 @@ void MapEvent::LoadFromMP2( s32 index, StreamBuf st )
 
         // message
         message = Game::GetEncodeString( st.toString() );
-        DEBUG( DBG_GAME, DBG_INFO,
-               "event"
-                   << ": " << message );
+        DEBUG_LOG( DBG_GAME, DBG_INFO,
+                   "event"
+                       << ": " << message );
     }
     else {
-        DEBUG( DBG_GAME, DBG_WARN, "unknown id" );
+        DEBUG_LOG( DBG_GAME, DBG_WARN, "unknown id" );
     }
 }
 
@@ -159,12 +158,12 @@ void MapSphinx::LoadFromMP2( s32 index, StreamBuf st )
         message = Game::GetEncodeString( st.toString() );
 
         valid = true;
-        DEBUG( DBG_GAME, DBG_INFO,
-               "sphinx"
-                   << ": " << message );
+        DEBUG_LOG( DBG_GAME, DBG_INFO,
+                   "sphinx"
+                       << ": " << message );
     }
     else {
-        DEBUG( DBG_GAME, DBG_WARN, "unknown id" );
+        DEBUG_LOG( DBG_GAME, DBG_WARN, "unknown id" );
     }
 }
 
@@ -219,9 +218,9 @@ void MapSign::LoadFromMP2( s32 index, StreamBuf st )
     SetIndex( index );
     SetUID( index );
     message = Game::GetEncodeString( message );
-    DEBUG( DBG_GAME, DBG_INFO,
-           "sign"
-               << ": " << message );
+    DEBUG_LOG( DBG_GAME, DBG_INFO,
+               "sign"
+                   << ": " << message );
 }
 
 StreamBase & operator<<( StreamBase & msg, const MapSign & obj )

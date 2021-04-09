@@ -22,8 +22,12 @@
 #ifndef H2RAND_H
 #define H2RAND_H
 
-#include <iterator>
+#include <algorithm>
+#include <cassert>
+#include <cstdlib>
+#include <functional>
 #include <list>
+#include <random>
 #include <utility>
 #include <vector>
 
@@ -32,34 +36,48 @@
 namespace Rand
 {
     uint32_t Get( uint32_t from, uint32_t to = 0 );
+    uint32_t GetWithSeed( uint32_t from, uint32_t to, uint32_t seed );
+    std::mt19937 & CurrentThreadRandomDevice();
 
     template <typename T>
-    const T * Get( const std::vector<T> & vec )
+    void Shuffle( std::vector<T> & vec )
     {
-        typename std::vector<T>::const_iterator it = vec.begin();
-        std::advance( it, Rand::Get( static_cast<uint32_t>( vec.size() - 1 ) ) );
-        return it == vec.end() ? NULL : &( *it );
+        std::shuffle( vec.begin(), vec.end(), CurrentThreadRandomDevice() );
     }
 
     template <typename T>
-    const T * Get( const std::list<T> & list )
+    const T & Get( const std::vector<T> & vec )
     {
+        assert( !vec.empty() );
+
+        const uint32_t id = Rand::Get( static_cast<uint32_t>( vec.size() - 1 ) );
+        return vec[id];
+    }
+
+    template <typename T>
+    const T & Get( const std::list<T> & list )
+    {
+        assert( !list.empty() );
+
         typename std::list<T>::const_iterator it = list.begin();
         std::advance( it, Rand::Get( static_cast<uint32_t>( list.size() - 1 ) ) );
-        return it == list.end() ? NULL : &( *it );
+        return *it;
     }
 
-    typedef std::pair<s32, u32> ValuePercent;
+    using ValuePercent = std::pair<int32_t, uint32_t>;
 
     class Queue : private std::vector<ValuePercent>
     {
     public:
         Queue( u32 size = 0 );
 
-        void Reset( void );
-        void Push( s32, u32 );
+        void Push( s32 value, u32 percent );
         size_t Size( void ) const;
-        s32 Get( void );
+        int32_t Get();
+        int32_t GetWithSeed( uint32_t seed );
+
+    private:
+        int32_t Get( const std::function<uint32_t( uint32_t )> & randomFunc );
     };
 }
 

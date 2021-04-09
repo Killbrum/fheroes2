@@ -19,25 +19,53 @@
  ***************************************************************************/
 
 #include "game_video.h"
+#include "agg.h"
+#include "audio_mixer.h"
 #include "cursor.h"
 #include "game.h"
+#include "localevent.h"
+#include "logging.h"
 #include "screen.h"
 #include "settings.h"
 #include "smk_decoder.h"
+#include "system.h"
 #include "ui_tool.h"
+
+namespace
+{
+    const std::vector<std::string> videoDir = {"anim", System::ConcatePath( "heroes2", "anim" )};
+
+    bool IsFile( const std::string & fileName, std::string & path )
+    {
+        std::string temp;
+
+        for ( size_t i = 0; i < videoDir.size(); ++i ) {
+            temp = Settings::GetLastFile( videoDir[i], fileName );
+            if ( System::IsFile( temp ) ) { // file doesn't exist, so no need to even try to load it
+                path.swap( temp );
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
 
 namespace Video
 {
-    size_t ShowVideo( const std::string & videoPath, bool isLooped, const std::vector<fheroes2::Rect> & roi )
+    size_t ShowVideo( const std::string & fileName, const VideoAction action, const std::vector<fheroes2::Rect> & roi )
     {
-        if ( !System::IsFile( videoPath ) ) { // file doesn't exist, so no need to even try to load it
-            DEBUG( DBG_GAME, DBG_INFO, videoPath << " file does not exist" );
+        std::string videoPath;
+        if ( !IsFile( fileName, videoPath ) ) { // file doesn't exist, so no need to even try to load it
+            DEBUG_LOG( DBG_GAME, DBG_INFO, fileName << " file does not exist" );
             return 0;
         }
 
         SMKVideoSequence video( videoPath );
         if ( video.frameCount() < 1 ) // nothing to show
             return 0;
+
+        const bool isLooped = ( action == VideoAction::LOOP_VIDEO );
 
         const bool hideCursor = roi.empty();
 
@@ -63,7 +91,15 @@ namespace Video
             }
         }
 
-        fheroes2::ScreenPaletteRestorer screenRestorer;
+        // Detect some non-existing video such such using 1 FPS or the size of 20 x 20 pixels.
+        if ( std::fabs( video.fps() - 1.0 ) < 0.001 || ( video.width() == 20 && video.height() == 20 ) ) {
+            if ( hideCursor ) {
+                Cursor::Get().Show();
+            }
+            return 0;
+        }
+
+        const fheroes2::ScreenPaletteRestorer screenRestorer;
 
         fheroes2::Image frame;
         std::vector<uint8_t> palette;
@@ -108,7 +144,7 @@ namespace Video
 
                     video.getNextFrame( frame, palette );
 
-                    fheroes2::Blit( frame, display, offset.x, offset.y );
+                    fheroes2::Copy( frame, 0, 0, display, offset.x, offset.y, frame.width(), frame.height() );
 
                     for ( size_t i = 0; i < roi.size(); ++i ) {
                         if ( le.MouseCursor( roi[i] ) ) {
@@ -146,7 +182,7 @@ namespace Video
                         video.resetFrame();
 
                     video.getNextFrame( frame, palette );
-                    fheroes2::Blit( frame, display, offset.x, offset.y );
+                    fheroes2::Copy( frame, 0, 0, display, offset.x, offset.y, frame.width(), frame.height() );
 
                     for ( size_t i = 0; i < roi.size(); ++i ) {
                         if ( le.MouseCursor( roi[i] ) ) {
@@ -156,6 +192,14 @@ namespace Video
                     }
 
                     isFrameReady = true;
+                }
+            }
+        }
+
+        if ( action == VideoAction::WAIT_FOR_USER_INPUT ) {
+            while ( le.HandleEvents() ) {
+                if ( le.KeyPress() || le.MouseClickLeft() || le.MouseClickMiddle() || le.MouseClickRight() ) {
+                    break;
                 }
             }
         }

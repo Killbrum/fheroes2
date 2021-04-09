@@ -25,20 +25,55 @@
 #include <string>
 
 #include "agg.h"
+#include "audio_mixer.h"
 #include "audio_music.h"
 #include "bin_info.h"
 #include "cursor.h"
 #include "dir.h"
 #include "embedded_image.h"
 #include "engine.h"
-#include "error.h"
 #include "game.h"
+#include "game_interface.h"
 #include "game_video.h"
 #include "gamedefs.h"
+#include "localevent.h"
+#include "logging.h"
 #include "screen.h"
-#include "settings.h"
 #include "system.h"
+#include "text.h"
+#include "translations.h"
 #include "zzlib.h"
+
+namespace
+{
+    void showTeamInfo()
+    {
+        fheroes2::Display & display = fheroes2::Display::instance();
+
+        fheroes2::Image image( display.width(), display.height() );
+        image.fill( 0 );
+
+        TextBox text( "fheroes2 Resurrection Team presents", Font::WHITE_LARGE, 500 );
+        text.Blit( ( image.width() - text.w() ) / 2, ( image.height() - text.h() ) / 2, image );
+
+        LocalEvent & le = LocalEvent::Get();
+
+        uint8_t alpha = 250;
+
+        while ( le.HandleEvents() && alpha > 20 ) {
+            if ( le.KeyPress() || le.MouseClickLeft() || le.MouseClickMiddle() || le.MouseClickRight() )
+                break;
+
+            if ( Game::AnimateCustomDelay( 40 ) ) {
+                fheroes2::Copy( image, display );
+                fheroes2::ApplyAlpha( display, alpha );
+                display.render();
+
+                alpha -= 5;
+            }
+        }
+    }
+}
 
 void SetVideoDriver( const std::string & );
 void SetTimidityEnvPath();
@@ -68,9 +103,12 @@ std::string GetCaption( void )
 
 int main( int argc, char ** argv )
 {
+    InitHardware();
+    Logging::InitLog();
+
     Settings & conf = Settings::Get();
 
-    DEBUG( DBG_ALL, DBG_INFO, "Free Heroes of Might and Magic II, " + conf.GetVersion() );
+    DEBUG_LOG( DBG_ALL, DBG_INFO, "Free Heroes of Might and Magic II, " + conf.GetVersion() );
 
     conf.SetProgramPath( argv[0] );
 
@@ -103,7 +141,11 @@ int main( int argc, char ** argv )
     if ( conf.Music() )
         SetTimidityEnvPath();
 
-    u32 subsystem = INIT_VIDEO | INIT_TIMER;
+    u32 subsystem = INIT_VIDEO;
+
+#if SDL_VERSION_ATLEAST( 2, 0, 0 )
+    subsystem |= INIT_GAMECONTROLLER;
+#endif
 
     if ( conf.Sound() || conf.Music() )
         subsystem |= INIT_AUDIO;
@@ -137,22 +179,27 @@ int main( int argc, char ** argv )
             if ( conf.FullScreen() != fheroes2::engine().isFullScreen() )
                 fheroes2::engine().toggleFullScreen();
 
-            display.resize( conf.VideoMode().w, conf.VideoMode().h );
+            display.resize( conf.VideoMode().width, conf.VideoMode().height );
+            display.fill( 0 ); // start from a black screen
+
             fheroes2::engine().setTitle( GetCaption() );
 
             SDL_ShowCursor( SDL_DISABLE ); // hide system cursor
 
             // Ensure the mouse position is updated to prevent bad initial values.
-            LocalEvent::Get().RegisterCycling();
+            LocalEvent::Get().RegisterCycling( fheroes2::PreRenderSystemInfo, fheroes2::PostRenderSystemInfo );
             LocalEvent::Get().GetMouseCursor();
+
+            // Update mouse cursor when switching between software emulation and OS mouse modes.
+            fheroes2::cursor().registerUpdater( Cursor::Refresh );
 
 #ifdef WITH_ZLIB
             const fheroes2::Image & appIcon = CreateImageFromZlib( 32, 32, iconImageLayer, sizeof( iconImageLayer ), iconTransformLayer, sizeof( iconTransformLayer ) );
             fheroes2::engine().setIcon( appIcon );
 #endif
 
-            DEBUG( DBG_GAME, DBG_INFO, conf.String() );
-            // DEBUG( DBG_GAME | DBG_ENGINE, DBG_INFO, display.GetInfo() );
+            DEBUG_LOG( DBG_GAME, DBG_INFO, conf.String() );
+            // DEBUG_LOG( DBG_GAME | DBG_ENGINE, DBG_INFO, display.GetInfo() );
 
             // read data dir
             if ( !AGG::Init() ) {
@@ -171,7 +218,9 @@ int main( int argc, char ** argv )
             // init game data
             Game::Init();
 
-            Video::ShowVideo( Settings::GetLastFile( System::ConcatePath( "heroes2", "anim" ), "H2XINTRO.SMK" ), false );
+            showTeamInfo();
+
+            Video::ShowVideo( "H2XINTRO.SMK", Video::VideoAction::DO_NOTHING );
 
             for ( int rs = Game::MAINMENU; rs != Game::QUITGAME; ) {
                 switch ( rs ) {
@@ -194,8 +243,8 @@ int main( int argc, char ** argv )
                 case Game::NEWSTANDARD:
                     rs = Game::NewStandard();
                     break;
-                case Game::NEWCAMPAIN:
-                    rs = Game::NewCampain();
+                case Game::NEWCAMPAIGN:
+                    rs = Game::NewCampaign();
                     break;
                 case Game::NEWMULTI:
                     rs = Game::NewMulti();
@@ -220,6 +269,12 @@ int main( int argc, char ** argv )
                 case Game::LOADMULTI:
                     rs = Game::LoadMulti();
                     break;
+                case Game::LOADHOTSEAT:
+                    rs = Game::LoadHotseat();
+                    break;
+                case Game::LOADNETWORK:
+                    rs = Game::LoadNetwork();
+                    break;
                 case Game::SCENARIOINFO:
                     rs = Game::ScenarioInfo();
                     break;
@@ -229,18 +284,24 @@ int main( int argc, char ** argv )
                 case Game::STARTGAME:
                     rs = Game::StartGame();
                     break;
+                case Game::SELECT_CAMPAIGN_SCENARIO:
+                    rs = Game::SelectCampaignScenario();
+                    break;
+                case Game::COMPLETE_CAMPAIGN_SCENARIO:
+                    rs = Game::CompleteCampaignScenario();
+                    break;
 
                 default:
                     break;
                 }
             }
         }
-#ifndef ANDROID
-        catch ( Error::Exception & ) {
-            VERBOSE( std::endl << conf.String() );
+        catch ( const std::exception & ex ) {
+            ERROR_LOG( "Exception '" << ex.what() << "' occured during application runtime." );
         }
-#endif
+
     fheroes2::Display::instance().release();
+    CloseHardware();
 
     return EXIT_SUCCESS;
 }
@@ -248,15 +309,18 @@ int main( int argc, char ** argv )
 bool ReadConfigs( void )
 {
     Settings & conf = Settings::Get();
-    const ListFiles & files = conf.GetListFiles( "", "fheroes2.cfg" );
+    const ListFiles & files = Settings::GetListFiles( "", "fheroes2.cfg" );
 
     bool isValidConfigurationFile = false;
     for ( ListFiles::const_iterator it = files.begin(); it != files.end(); ++it ) {
-        if ( System::IsFile( *it ) ) {
-            if ( conf.Read( *it ) ) {
-                isValidConfigurationFile = true;
-                break;
-            }
+        if ( System::IsFile( *it ) && conf.Read( *it ) ) {
+            isValidConfigurationFile = true;
+            const std::string & externalCommand = conf.externalMusicCommand();
+            if ( !externalCommand.empty() )
+                Music::SetExtCommand( externalCommand );
+
+            LocalEvent::Get().SetControllerPointerSpeed( conf.controllerPointerSpeed() );
+            break;
         }
     }
 
@@ -319,7 +383,7 @@ void SetLangEnvPath( const Settings & conf )
                 Translation::setDomain( "fheroes2" );
         }
         else
-            ERROR( "translation not found: " << mofile );
+            ERROR_LOG( "translation not found: " << mofile );
     }
 #else
     (void)conf;

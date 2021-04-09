@@ -43,7 +43,7 @@ namespace Battle
         return d = ( TOP_LEFT == d ? CENTER : direction_t( d >> 1 ) );
     }
 
-    typedef std::vector<s32> Indexes;
+    using Indexes = std::vector<int32_t>;
 
     class Board : public std::vector<Cell>
     {
@@ -57,16 +57,14 @@ namespace Battle
 
         s32 GetIndexAbsPosition( const Point & ) const;
         Indexes GetPassableQualityPositions( const Unit & b );
-        Indexes GetNearestTroopIndexes( s32, const Indexes * ) const;
-        Indexes GetAStarPath( const Unit &, const Position &, bool debug = true );
-        std::string AllUnitsInfo( void ) const;
+        std::vector<Unit *> GetNearestTroops( const Unit * startUnit, const std::vector<Unit *> & blackList );
+        Indexes GetAStarPath( const Unit & unit, const Position & destination, const bool debug = true ) const;
 
         void SetEnemyQuality( const Unit & );
         void SetPositionQuality( const Unit & );
         void SetScanPassability( const Unit & );
 
         void SetCobjObjects( const Maps::Tiles & );
-        void SetCobjObject( int icn, s32 );
         void SetCovrObjects( int icn );
 
         static std::string GetMoatInfo( void );
@@ -75,15 +73,20 @@ namespace Battle
         static bool isNearIndexes( s32, s32 );
         static bool isValidIndex( s32 );
         static bool isCastleIndex( s32 );
-        static bool isMoatIndex( s32 );
-        static bool isBridgeIndex( s32 );
+        static bool isMoatIndex( s32 index, const Unit & b );
+        static bool isBridgeIndex( s32 index, const Unit & b );
         static bool isImpassableIndex( s32 );
         static bool isOutOfWallsIndex( s32 );
         static bool isReflectDirection( int );
+        static bool IsLeftDirection( const int32_t startCellId, const int32_t endCellId, const bool prevLeftDirection );
         static bool isNegativeDistance( s32 index1, s32 index2 );
+        static int DistanceFromOriginX( int32_t index, bool reflect );
         static int GetReflectDirection( int );
         static int GetDirection( s32, s32 );
-        static s32 GetDistance( s32, s32 );
+        static int32_t DoubleCellAttackValue( const Unit & attacker, const Unit & target, const int32_t from, const int32_t targetCell );
+        static int32_t OptimalAttackTarget( const Unit & attacker, const Unit & target, const int32_t from );
+        static int32_t OptimalAttackValue( const Unit & attacker, const Unit & target, const int32_t from );
+        static uint32_t GetDistance( s32, s32 );
         static bool isValidDirection( s32, int );
         static s32 GetIndexDirection( s32, int );
         static Indexes GetDistanceIndexes( s32, u32 );
@@ -93,20 +96,23 @@ namespace Battle
         static bool isValidMirrorImageIndex( s32, const Unit * );
 
         static Indexes GetAdjacentEnemies( const Unit & unit );
-    };
 
-    struct ShortestDistance : public std::binary_function<s32, s32, bool>
-    {
-        ShortestDistance( s32 index )
-            : center( index )
-        {}
-
-        bool operator()( s32 index1, s32 index2 ) const
+        enum
         {
-            return Board::GetDistance( center, index1 ) < Board::GetDistance( center, index2 );
-        }
+            CATAPULT_POS = 77,
+            CASTLE_GATE_POS = 50,
+            CASTLE_FIRST_TOP_WALL_POS = 8,
+            CASTLE_SECOND_TOP_WALL_POS = 29,
+            CASTLE_THIRD_TOP_WALL_POS = 73,
+            CASTLE_FORTH_TOP_WALL_POS = 96,
+            CASTLE_TOP_ARCHER_TOWER_POS = 19,
+            CASTLE_BOTTOM_ARCHER_TOWER_POS = 85,
+            CASTLE_TOP_GATE_TOWER_POS = 40,
+            CASTLE_BOTTOM_GATE_TOWER_POS = 62
+        };
 
-        s32 center;
+    private:
+        void SetCobjObject( const int icn, const int32_t dst );
     };
 }
 

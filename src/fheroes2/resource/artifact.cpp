@@ -24,15 +24,18 @@
 #include <string>
 #include <vector>
 
-#include "agg.h"
+#include "agg_image.h"
 #include "artifact.h"
 #include "cursor.h"
 #include "dialog.h"
 #include "dialog_selectitems.h"
 #include "game.h"
 #include "heroes.h"
-#include "settings.h"
+#include "icn.h"
+#include "logging.h"
+#include "rand.h"
 #include "spell.h"
+#include "statusbar.h"
 #include "text.h"
 #include "world.h"
 
@@ -256,7 +259,7 @@ void Artifact::UpdateStats( const std::string & spec )
         }
     }
     else
-        VERBOSE( spec << ": " << doc.ErrorDesc() );
+        VERBOSE_LOG( spec << ": " << doc.ErrorDesc() );
 #else
     (void)spec;
 #endif
@@ -591,7 +594,7 @@ int Artifact::GetSpell( void ) const
 
 void Artifact::SetSpell( int v )
 {
-    bool adv = Rand::Get( 1 );
+    const bool adv = Rand::Get( 1 ) != 0;
 
     switch ( v ) {
     case Spell::RANDOM:
@@ -642,7 +645,7 @@ int Artifact::Rand( level_t lvl )
                 v.push_back( art );
     }
 
-    int res = v.size() ? *Rand::Get( v ) : Artifact::UNKNOWN;
+    int res = v.size() ? Rand::Get( v ) : Artifact::UNKNOWN;
     artifacts[res].bits |= ART_RNDUSED;
 
     return res;
@@ -665,7 +668,7 @@ Artifact Artifact::FromMP2IndexSprite( u32 index )
     else if ( 0xAB == index )
         return Rand( ART_LEVEL3 );
 
-    DEBUG( DBG_GAME, DBG_WARN, "unknown index: " << static_cast<int>( index ) );
+    DEBUG_LOG( DBG_GAME, DBG_WARN, "unknown index: " << static_cast<int>( index ) );
 
     return Artifact( UNKNOWN );
 }
@@ -905,11 +908,12 @@ u32 GoldInsteadArtifact( int obj )
     return 0;
 }
 
-ArtifactsBar::ArtifactsBar( const Heroes * ptr, bool mini, bool ro, bool change /* false */ )
-    : hero( ptr )
+ArtifactsBar::ArtifactsBar( const Heroes * ptr, bool mini, bool ro, bool change /* false */, StatusBar * bar /* = nullptr */ )
+    : _hero( ptr )
     , use_mini_sprite( mini )
     , read_only( ro )
     , can_change( change )
+    , _statusBar( bar )
 {
     if ( use_mini_sprite ) {
         const fheroes2::Sprite & sprite = fheroes2::AGG::GetICN( ICN::HSICONS, 0 );
@@ -961,10 +965,16 @@ void ArtifactsBar::RedrawItem( Artifact & art, const Rect & pos, bool selected, 
     if ( art.isValid() ) {
         Cursor::Get().Hide();
 
-        if ( use_mini_sprite )
-            fheroes2::Blit( fheroes2::AGG::GetICN( ICN::ARTFX, art.IndexSprite32() ), dstsf, pos.x + 1, pos.y + 1 );
-        else
-            fheroes2::Blit( fheroes2::AGG::GetICN( ICN::ARTIFACT, art.IndexSprite64() ), dstsf, pos.x, pos.y );
+        if ( use_mini_sprite ) {
+            const fheroes2::Sprite & artifactSprite = fheroes2::AGG::GetICN( ICN::ARTFX, art.IndexSprite32() );
+            fheroes2::Fill( dstsf, pos.x + 1, pos.y + 1, artifactSprite.width(), artifactSprite.height(), 0 );
+            fheroes2::Blit( artifactSprite, dstsf, pos.x + 1, pos.y + 1 );
+        }
+        else {
+            const fheroes2::Sprite & artifactSprite = fheroes2::AGG::GetICN( ICN::ARTIFACT, art.IndexSprite64() );
+            fheroes2::Fill( dstsf, pos.x, pos.y, artifactSprite.width(), artifactSprite.height(), 0 );
+            fheroes2::Blit( artifactSprite, dstsf, pos.x, pos.y );
+        }
 
         if ( selected ) {
             if ( use_mini_sprite )
@@ -977,7 +987,7 @@ void ArtifactsBar::RedrawItem( Artifact & art, const Rect & pos, bool selected, 
     }
 }
 
-bool ArtifactsBar::ActionBarSingleClick( Artifact & art )
+bool ArtifactsBar::ActionBarLeftMouseSingleClick( Artifact & art )
 {
     if ( isSelected() ) {
         if ( !read_only )
@@ -1000,25 +1010,32 @@ bool ArtifactsBar::ActionBarSingleClick( Artifact & art )
     return true;
 }
 
-bool ArtifactsBar::ActionBarDoubleClick( Artifact & art )
+bool ArtifactsBar::ActionBarLeftMouseDoubleClick( Artifact & art )
 {
     if ( art() == Artifact::MAGIC_BOOK ) {
         if ( can_change )
-            const_cast<Heroes *>( hero )->EditSpellBook();
-        else
-            hero->OpenSpellBook( SpellBook::ALL, false );
+            const_cast<Heroes *>( _hero )->EditSpellBook();
+        else {
+            if ( _statusBar != nullptr ) {
+                std::function<void( const std::string & )> statusCallback = [this]( const std::string & status ) { _statusBar->ShowMessage( status ); };
+                _hero->OpenSpellBook( SpellBook::Filter::ALL, false, &statusCallback );
+            }
+            else {
+                _hero->OpenSpellBook( SpellBook::Filter::ALL, false, nullptr );
+            }
+        }
     }
-    else if ( art() == Artifact::SPELL_SCROLL && Settings::Get().ExtHeroAllowTranscribingScroll() && hero->CanTranscribeScroll( art ) ) {
+    else if ( art() == Artifact::SPELL_SCROLL && Settings::Get().ExtHeroAllowTranscribingScroll() && !read_only && _hero->CanTranscribeScroll( art ) ) {
         Spell spell = art.GetSpell();
 
         if ( !spell.isValid() ) {
-            DEBUG( DBG_GAME, DBG_WARN, "invalid spell" );
+            DEBUG_LOG( DBG_GAME, DBG_WARN, "invalid spell" );
         }
-        else if ( hero->CanLearnSpell( spell ) ) {
+        else if ( _hero->CanLearnSpell( spell ) ) {
             payment_t cost = spell.GetCost();
             u32 answer = 0;
             std::string text = _(
-                "Do you want to use your knowledge of magical secrets to transcribe the %{spell} Scroll into your spell book?\nThe Scroll will be consumed.\n Spell point: %{sp}" );
+                "Do you want to use your knowledge of magical secrets to transcribe the %{spell} Scroll into your Magic Book?\nThe Spell Scroll will be consumed.\n Cost in spell points: %{sp}" );
 
             StringReplace( text, "%{spell}", spell.GetName() );
             StringReplace( text, "%{sp}", spell.SpellPoint() );
@@ -1029,13 +1046,15 @@ bool ArtifactsBar::ActionBarDoubleClick( Artifact & art )
                 StringReplace( text, "%{mp}", spell.MovePoint() );
             }
 
+            const std::string title = _( "Transcribe Spell Scroll" );
+
             if ( cost.GetValidItemsCount() )
-                answer = Dialog::ResourceInfo( "", text, cost, Dialog::YES | Dialog::NO );
+                answer = Dialog::ResourceInfo( title, text, cost, Dialog::YES | Dialog::NO );
             else
-                answer = Dialog::Message( "", text, Font::BIG, Dialog::YES | Dialog::NO );
+                answer = Dialog::Message( title, text, Font::BIG, Dialog::YES | Dialog::NO );
 
             if ( answer == Dialog::YES )
-                const_cast<Heroes *>( hero )->TranscribeScroll( art );
+                const_cast<Heroes *>( _hero )->TranscribeScroll( art );
         }
     }
     else if ( art.isValid() ) {
@@ -1047,7 +1066,7 @@ bool ArtifactsBar::ActionBarDoubleClick( Artifact & art )
     return true;
 }
 
-bool ArtifactsBar::ActionBarPressRight( Artifact & art )
+bool ArtifactsBar::ActionBarRightMouseHold( Artifact & art )
 {
     ResetSelected();
 
@@ -1061,7 +1080,7 @@ bool ArtifactsBar::ActionBarPressRight( Artifact & art )
     return true;
 }
 
-bool ArtifactsBar::ActionBarSingleClick( Artifact & art1, Artifact & art2 )
+bool ArtifactsBar::ActionBarLeftMouseSingleClick( Artifact & art1, Artifact & art2 )
 {
     if ( art1() != Artifact::MAGIC_BOOK && art2() != Artifact::MAGIC_BOOK ) {
         std::swap( art1, art2 );
@@ -1074,13 +1093,13 @@ bool ArtifactsBar::ActionBarSingleClick( Artifact & art1, Artifact & art2 )
 bool ArtifactsBar::ActionBarCursor( Artifact & art )
 {
     if ( isSelected() ) {
-        Artifact * art2 = GetSelectedItem();
+        const Artifact * art2 = GetSelectedItem();
 
         if ( &art == art2 ) {
             if ( art() == Artifact::MAGIC_BOOK )
-                msg = _( "Open book" );
-            else if ( art() == Artifact::SPELL_SCROLL && Settings::Get().ExtHeroAllowTranscribingScroll() && hero->CanTranscribeScroll( art ) )
-                msg = _( "Transcribe scroll" );
+                msg = _( "View Spells" );
+            else if ( art() == Artifact::SPELL_SCROLL && Settings::Get().ExtHeroAllowTranscribingScroll() && !read_only && _hero->CanTranscribeScroll( art ) )
+                msg = _( "Transcribe Spell Scroll" );
             else {
                 msg = _( "View %{name} Info" );
                 StringReplace( msg, "%{name}", art.GetName() );
@@ -1092,7 +1111,7 @@ bool ArtifactsBar::ActionBarCursor( Artifact & art )
                 StringReplace( msg, "%{name}", art2->GetName() );
             }
         }
-        else {
+        else if ( !read_only ) {
             msg = _( "Exchange %{name2} with %{name}" );
             StringReplace( msg, "%{name}", art.GetName() );
             StringReplace( msg, "%{name2}", art2->GetName() );

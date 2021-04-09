@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "gamedefs.h"
+#include "serialize.h"
 
 namespace Maps
 {
@@ -106,7 +107,7 @@ namespace Maps
     StreamBase & operator>>( StreamBase &, FileInfo & );
 }
 
-typedef std::vector<Maps::FileInfo> MapsFileInfoList;
+using MapsFileInfoList = std::vector<Maps::FileInfo>;
 
 bool PrepareMapsFileInfoList( MapsFileInfoList &, bool multi );
 

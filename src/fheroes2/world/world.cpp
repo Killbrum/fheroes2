@@ -21,10 +21,9 @@
  ***************************************************************************/
 
 #include <algorithm>
-#include <assert.h>
+#include <cassert>
 #include <functional>
 
-#include "agg.h"
 #include "ai.h"
 #include "artifact.h"
 #include "castle.h"
@@ -33,12 +32,12 @@
 #include "game_static.h"
 #include "ground.h"
 #include "heroes.h"
+#include "logging.h"
 #include "maps_actions.h"
 #include "mp2.h"
 #include "pairs.h"
 #include "race.h"
 #include "resource.h"
-#include "settings.h"
 #include "text.h"
 #include "world.h"
 
@@ -74,10 +73,10 @@ void MapObjects::clear( void )
 void MapObjects::add( MapObjectSimple * obj )
 {
     if ( obj ) {
-        std::map<u32, MapObjectSimple *> & map = *this;
-        if ( map[obj->GetUID()] )
-            delete map[obj->GetUID()];
-        map[obj->GetUID()] = obj;
+        std::map<u32, MapObjectSimple *> & currentMap = *this;
+        if ( currentMap[obj->GetUID()] )
+            delete currentMap[obj->GetUID()];
+        currentMap[obj->GetUID()] = obj;
     }
 }
 
@@ -262,6 +261,9 @@ void World::Defaults( void )
     vec_heroes.Init();
 
     vec_castles.Init();
+
+    // map seed is random and persisted on saves
+    _seed = Rand::Get( std::numeric_limits<uint32_t>::max() );
 }
 
 void World::Reset( void )
@@ -300,6 +302,8 @@ void World::Reset( void )
 
     heroes_cond_wins = Heroes::UNKNOWN;
     heroes_cond_loss = Heroes::UNKNOWN;
+
+    _seed = 0;
 }
 
 /* new maps */
@@ -356,21 +360,21 @@ Maps::Tiles & World::GetTiles( u32 ax, u32 ay )
     return GetTiles( ay * w() + ax );
 }
 
-const Maps::Tiles & World::GetTiles( s32 index ) const
+const Maps::Tiles & World::GetTiles( const int32_t tileId ) const
 {
 #ifdef WITH_DEBUG
-    return vec_tiles.at( index );
+    return vec_tiles.at( tileId );
 #else
-    return vec_tiles[index];
+    return vec_tiles[tileId];
 #endif
 }
 
-Maps::Tiles & World::GetTiles( s32 index )
+Maps::Tiles & World::GetTiles( const int32_t tileId )
 {
 #ifdef WITH_DEBUG
-    return vec_tiles.at( index );
+    return vec_tiles.at( tileId );
 #else
-    return vec_tiles[index];
+    return vec_tiles[tileId];
 #endif
 }
 
@@ -437,6 +441,11 @@ CastleHeroes World::GetHeroes( const Castle & castle ) const
     return CastleHeroes( vec_heroes.GetGuest( castle ), vec_heroes.GetGuard( castle ) );
 }
 
+void World::RescanAllHeroesPathPassable() const
+{
+    std::for_each( vec_heroes.begin(), vec_heroes.end(), []( Heroes * hero ) { hero->RescanPathPassable(); } );
+}
+
 int World::GetDay( void ) const
 {
     return LastDay() ? DAYOFWEEK : day % DAYOFWEEK;
@@ -494,7 +503,8 @@ void World::pickRumor()
         assert( 0 );
         return;
     }
-    else if ( vec_rumors.size() == 1 ) {
+
+    if ( vec_rumors.size() == 1 ) {
         _rumor = &vec_rumors.front();
         assert( 0 );
         return;
@@ -503,7 +513,7 @@ void World::pickRumor()
     const std::string * current = _rumor;
     while ( current == _rumor ) {
         // vec_rumors always contain values
-        _rumor = Rand::Get( vec_rumors );
+        _rumor = &Rand::Get( vec_rumors );
     }
 }
 
@@ -590,45 +600,47 @@ void World::NewMonth( void )
 
 void World::MonthOfMonstersAction( const Monster & mons )
 {
-    if ( mons.isValid() ) {
-        MapsIndexes tiles, excld;
-        tiles.reserve( vec_tiles.size() / 2 );
-        excld.reserve( vec_tiles.size() / 2 );
-
-        const u32 dist = 2;
-        const u8 objs[] = {MP2::OBJ_MONSTER, MP2::OBJ_HEROES, MP2::OBJ_CASTLE, MP2::OBJN_CASTLE, 0};
-
-        // create exclude list
-        {
-            const MapsIndexes & objv = Maps::GetObjectsPositions( objs );
-
-            for ( MapsIndexes::const_iterator it = objv.begin(); it != objv.end(); ++it ) {
-                const MapsIndexes & obja = Maps::GetAroundIndexes( *it, dist );
-                excld.insert( excld.end(), obja.begin(), obja.end() );
-            }
-        }
-
-        // create valid points
-        for ( MapsTiles::const_iterator it = vec_tiles.begin(); it != vec_tiles.end(); ++it ) {
-            const Maps::Tiles & tile = *it;
-
-            if ( !tile.isWater() && MP2::OBJ_ZERO == tile.GetObject() && tile.isPassable( Direction::CENTER, false, true )
-                 && excld.end() == std::find( excld.begin(), excld.end(), tile.GetIndex() ) ) {
-                tiles.push_back( tile.GetIndex() );
-                const MapsIndexes & obja = Maps::GetAroundIndexes( tile.GetIndex(), dist );
-                excld.insert( excld.end(), obja.begin(), obja.end() );
-            }
-        }
-
-        const u32 area = 12;
-        const u32 maxc = ( w() / area ) * ( h() / area );
-        std::random_shuffle( tiles.begin(), tiles.end() );
-        if ( tiles.size() > maxc )
-            tiles.resize( maxc );
-
-        for ( MapsIndexes::const_iterator it = tiles.begin(); it != tiles.end(); ++it )
-            Maps::Tiles::PlaceMonsterOnTile( vec_tiles[*it], mons, 0 /* random */ );
+    if ( !mons.isValid() ) {
+        return;
     }
+
+    MapsIndexes tiles, excld;
+    tiles.reserve( vec_tiles.size() / 2 );
+    excld.reserve( vec_tiles.size() / 2 );
+
+    const int32_t dist = 2;
+    const std::vector<uint8_t> objs = { MP2::OBJ_MONSTER, MP2::OBJ_HEROES, MP2::OBJ_CASTLE, MP2::OBJN_CASTLE };
+
+    // create exclude list
+    const MapsIndexes & objv = Maps::GetObjectsPositions( objs );
+
+    for ( MapsIndexes::const_iterator it = objv.begin(); it != objv.end(); ++it ) {
+        const MapsIndexes & obja = Maps::GetAroundIndexes( *it, dist );
+        excld.insert( excld.end(), obja.begin(), obja.end() );
+    }
+
+    // create valid points
+    for ( const Maps::Tiles & tile : vec_tiles ) {
+        if ( tile.isWater() || MP2::OBJ_ZERO != tile.GetObject() || !tile.isPassable( Direction::CENTER, false, true, 0 ) ) {
+            continue;
+        }
+
+        // Cell should have at least 2 empty neighbor cells
+        if ( Maps::ScanAroundObject( tile.GetIndex(), MP2::OBJ_ZERO ).size() > 2 && excld.end() == std::find( excld.begin(), excld.end(), tile.GetIndex() ) ) {
+            tiles.push_back( tile.GetIndex() );
+            const MapsIndexes & obja = Maps::GetAroundIndexes( tile.GetIndex(), dist );
+            excld.insert( excld.end(), obja.begin(), obja.end() );
+        }
+    }
+
+    const int32_t area = 12;
+    const int32_t maxc = ( w() / area ) * ( h() / area );
+    Rand::Shuffle( tiles );
+    if ( tiles.size() > static_cast<size_t>( maxc ) )
+        tiles.resize( maxc );
+
+    for ( MapsIndexes::const_iterator it = tiles.begin(); it != tiles.end(); ++it )
+        Maps::Tiles::PlaceMonsterOnTile( vec_tiles[*it], mons, 0 /* random */ );
 }
 
 const std::string & World::GetRumors( void )
@@ -662,25 +674,24 @@ s32 World::NextTeleport( s32 index ) const
 {
     const MapsIndexes teleports = GetTeleportEndPoints( index );
     if ( teleports.empty() ) {
-        DEBUG( DBG_GAME, DBG_WARN, "not found" );
+        DEBUG_LOG( DBG_GAME, DBG_WARN, "not found" );
+        return index;
     }
 
-    return teleports.size() ? *Rand::Get( teleports ) : index;
+    return Rand::Get( teleports );
 }
 
 MapsIndexes World::GetWhirlpoolEndPoints( s32 center ) const
 {
     if ( MP2::OBJ_WHIRLPOOL == GetTiles( center ).GetObject( false ) ) {
-        MapsIndexes whilrpools = Maps::GetObjectPositions( MP2::OBJ_WHIRLPOOL, true );
         std::map<s32, MapsIndexes> uniq_whirlpools;
 
-        for ( MapsIndexes::const_iterator it = whilrpools.begin(); it != whilrpools.end(); ++it ) {
+        for ( MapsIndexes::const_iterator it = _whirlpoolTiles.begin(); it != _whirlpoolTiles.end(); ++it ) {
             uniq_whirlpools[GetTiles( *it ).GetObjectUID()].push_back( *it );
         }
-        whilrpools.clear();
 
         if ( 2 > uniq_whirlpools.size() ) {
-            DEBUG( DBG_GAME, DBG_WARN, "is empty" );
+            DEBUG_LOG( DBG_GAME, DBG_WARN, "is empty" );
             return MapsIndexes();
         }
 
@@ -695,7 +706,7 @@ MapsIndexes World::GetWhirlpoolEndPoints( s32 center ) const
             uniqs.push_back( uniq );
         }
 
-        return uniq_whirlpools[*Rand::Get( uniqs )];
+        return uniq_whirlpools[Rand::Get( uniqs )];
     }
 
     return MapsIndexes();
@@ -706,10 +717,11 @@ s32 World::NextWhirlpool( s32 index ) const
 {
     const MapsIndexes whilrpools = GetWhirlpoolEndPoints( index );
     if ( whilrpools.empty() ) {
-        DEBUG( DBG_GAME, DBG_WARN, "is full" );
+        DEBUG_LOG( DBG_GAME, DBG_WARN, "is full" );
+        return index;
     }
 
-    return whilrpools.size() ? *Rand::Get( whilrpools ) : index;
+    return Rand::Get( whilrpools );
 }
 
 /* return message from sign */
@@ -852,21 +864,16 @@ EventsDate World::GetEventsDate( int color ) const
 std::string World::DateString( void ) const
 {
     std::ostringstream os;
-    os << "month: " << static_cast<int>( GetMonth() ) << ", "
-       << "week: " << static_cast<int>( GetWeek() ) << ", "
-       << "day: " << static_cast<int>( GetDay() );
+    os << "month: " << GetMonth() << ", "
+       << "week: " << GetWeek() << ", "
+       << "day: " << GetDay();
     return os.str();
-}
-
-bool IsObeliskOnMaps( const Maps::Tiles & tile )
-{
-    return MP2::OBJ_OBELISK == tile.GetObject( false );
 }
 
 u32 World::CountObeliskOnMaps( void )
 {
-    u32 res = std::count_if( vec_tiles.begin(), vec_tiles.end(), IsObeliskOnMaps );
-    return res ? res : 6;
+    const size_t res = std::count_if( vec_tiles.begin(), vec_tiles.end(), []( const Maps::Tiles & tile ) { return MP2::OBJ_OBELISK == tile.GetObject( false ); } );
+    return res > 0 ? static_cast<uint32_t>( res ) : 6;
 }
 
 void World::ActionForMagellanMaps( int color )
@@ -938,7 +945,7 @@ bool World::KingdomIsWins( const Kingdom & kingdom, int wins ) const
         }
         else {
             const Artifact art = conf.WinsFindArtifactID();
-            return ( heroes.end() != std::find_if( heroes.begin(), heroes.end(), [art]( const Heroes * hero ) { return hero->HasArtifact( art ) > 0; } ) );
+            return ( heroes.end() != std::find_if( heroes.begin(), heroes.end(), [&art]( const Heroes * hero ) { return hero->HasArtifact( art ) > 0; } ) );
         }
     }
 
@@ -1058,9 +1065,15 @@ void World::PostLoad()
 
     // cache data that's accessed often
     _allTeleporters = Maps::GetObjectPositions( MP2::OBJ_STONELITHS, true );
+    _whirlpoolTiles = Maps::GetObjectPositions( MP2::OBJ_WHIRLPOOL, true );
 
     resetPathfinder();
     ComputeStaticAnalysis();
+}
+
+uint32_t World::GetMapSeed() const
+{
+    return _seed;
 }
 
 StreamBase & operator<<( StreamBase & msg, const CapturedObject & obj )
@@ -1189,7 +1202,7 @@ StreamBase & operator<<( StreamBase & msg, const World & w )
     const Size & sz = w;
 
     return msg << sz << w.vec_tiles << w.vec_heroes << w.vec_castles << w.vec_kingdoms << w.vec_rumors << w.vec_eventsday << w.map_captureobj << w.ultimate_artifact
-               << w.day << w.week << w.month << w.week_current << w.week_next << w.heroes_cond_wins << w.heroes_cond_loss << w.map_actions << w.map_objects;
+               << w.day << w.week << w.month << w.week_current << w.week_next << w.heroes_cond_wins << w.heroes_cond_loss << w.map_actions << w.map_objects << w._seed;
 }
 
 StreamBase & operator>>( StreamBase & msg, World & w )
@@ -1199,10 +1212,15 @@ StreamBase & operator>>( StreamBase & msg, World & w )
     msg >> sz >> w.vec_tiles >> w.vec_heroes >> w.vec_castles >> w.vec_kingdoms >> w.vec_rumors >> w.vec_eventsday >> w.map_captureobj >> w.ultimate_artifact >> w.day
         >> w.week >> w.month >> w.week_current >> w.week_next >> w.heroes_cond_wins >> w.heroes_cond_loss >> w.map_actions >> w.map_objects;
 
-    w.PostLoad();
+    if ( Game::GetLoadVersion() >= FORMAT_VERSION_091_RELEASE ) {
+        msg >> w._seed;
+    }
+    else {
+        // For old versions, generate a different seed at each map loading
+        w._seed = Rand::Get( std::numeric_limits<uint32_t>::max() );
+    }
 
-    // heroes postfix
-    std::for_each( w.vec_heroes.begin(), w.vec_heroes.end(), []( Heroes * hero ) { hero->RescanPathPassable(); } );
+    w.PostLoad();
 
     return msg;
 }
@@ -1223,7 +1241,7 @@ void EventDate::LoadFromMP2( StreamBuf st )
         st.skip( 2 );
 
         // allow computer
-        computer = st.getLE16();
+        computer = ( st.getLE16() != 0 );
 
         // day of first occurent
         first = st.getLE16();
@@ -1255,12 +1273,12 @@ void EventDate::LoadFromMP2( StreamBuf st )
 
         // message
         message = Game::GetEncodeString( st.toString() );
-        DEBUG( DBG_GAME, DBG_INFO,
-               "event"
-                   << ": " << message );
+        DEBUG_LOG( DBG_GAME, DBG_INFO,
+                   "event"
+                       << ": " << message );
     }
     else {
-        DEBUG( DBG_GAME, DBG_WARN, "unknown id" );
+        DEBUG_LOG( DBG_GAME, DBG_WARN, "unknown id" );
     }
 }
 

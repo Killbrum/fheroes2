@@ -21,8 +21,8 @@
  ***************************************************************************/
 
 #include "race.h"
-#include "engine.h"
-#include "gamedefs.h"
+#include "rand.h"
+#include "translations.h"
 
 const std::string & Race::String( int race )
 {
@@ -73,23 +73,4 @@ int Race::Rand( void )
     }
 
     return Race::NECR;
-}
-
-int Race::FromInt( int race )
-{
-    switch ( race ) {
-    case KNGT:
-    case BARB:
-    case SORC:
-    case WRLK:
-    case WZRD:
-    case NECR:
-    case MULT:
-    case RAND:
-        return race;
-    default:
-        break;
-    }
-
-    return Race::NONE;
 }

@@ -21,8 +21,8 @@
  ***************************************************************************/
 
 #include "font.h"
-#include "engine.h"
-#include "system.h"
+#include "logging.h"
+#include "tools.h"
 
 #ifdef WITH_TTF
 
@@ -39,7 +39,7 @@ FontTTF::~FontTTF()
 void FontTTF::Init( void )
 {
     if ( 0 != TTF_Init() )
-        ERROR( SDL_GetError() );
+        ERROR_LOG( SDL_GetError() );
 }
 
 void FontTTF::Quit( void )
@@ -49,7 +49,7 @@ void FontTTF::Quit( void )
 
 bool FontTTF::isValid( void ) const
 {
-    return ptr;
+    return ptr != nullptr;
 }
 
 bool FontTTF::Open( const std::string & filename, int size )
@@ -58,8 +58,8 @@ bool FontTTF::Open( const std::string & filename, int size )
         TTF_CloseFont( ptr );
     ptr = TTF_OpenFont( filename.c_str(), size );
     if ( !ptr )
-        ERROR( SDL_GetError() );
-    return ptr;
+        ERROR_LOG( SDL_GetError() );
+    return ptr != nullptr;
 }
 
 void FontTTF::SetStyle( int style )
@@ -87,31 +87,31 @@ int FontTTF::LineSkip( void ) const
     return TTF_FontLineSkip( ptr );
 }
 
-Surface FontTTF::RenderText( const std::string & msg, const RGBA & clr, bool solid )
-{
-    return Surface( solid ? TTF_RenderUTF8_Solid( ptr, msg.c_str(), clr() ) : TTF_RenderUTF8_Blended( ptr, msg.c_str(), clr() ) );
-}
-
-Surface FontTTF::RenderChar( char ch, const RGBA & clr, bool solid )
-{
-    char buf[2] = {'\0', '\0'};
-    buf[0] = ch;
-
-    return Surface( solid ? TTF_RenderUTF8_Solid( ptr, buf, clr() ) : TTF_RenderUTF8_Blended( ptr, buf, clr() ) );
-}
-
-Surface FontTTF::RenderUnicodeText( const std::vector<u16> & msg, const RGBA & clr, bool solid )
-{
-    return Surface( solid ? TTF_RenderUNICODE_Solid( ptr, &msg[0], clr() ) : TTF_RenderUNICODE_Blended( ptr, &msg[0], clr() ) );
-}
-
-Surface FontTTF::RenderUnicodeChar( u16 ch, const RGBA & clr, bool solid )
-{
-    u16 buf[2] = {L'\0', L'\0'};
-    buf[0] = ch;
-
-    return Surface( solid ? TTF_RenderUNICODE_Solid( ptr, buf, clr() ) : TTF_RenderUNICODE_Blended( ptr, buf, clr() ) );
-}
+// Surface FontTTF::RenderText( const std::string & msg, const RGBA & clr, bool solid )
+// {
+//     return Surface( solid ? TTF_RenderUTF8_Solid( ptr, msg.c_str(), clr() ) : TTF_RenderUTF8_Blended( ptr, msg.c_str(), clr() ) );
+// }
+//
+// Surface FontTTF::RenderChar( char ch, const RGBA & clr, bool solid )
+// {
+//     char buf[2] = {'\0', '\0'};
+//     buf[0] = ch;
+//
+//     return Surface( solid ? TTF_RenderUTF8_Solid( ptr, buf, clr() ) : TTF_RenderUTF8_Blended( ptr, buf, clr() ) );
+// }
+//
+// Surface FontTTF::RenderUnicodeText( const std::vector<uint16_t> & msg, const RGBA & clr, bool solid )
+// {
+//     return Surface( solid ? TTF_RenderUNICODE_Solid( ptr, &msg[0], clr() ) : TTF_RenderUNICODE_Blended( ptr, &msg[0], clr() ) );
+// }
+//
+// Surface FontTTF::RenderUnicodeChar( uint16_t ch, const RGBA & clr, bool solid )
+// {
+//     uint16_t buf[2] = {L'\0', L'\0'};
+//     buf[0] = ch;
+//
+//     return Surface( solid ? TTF_RenderUNICODE_Solid( ptr, buf, clr() ) : TTF_RenderUNICODE_Blended( ptr, buf, clr() ) );
+// }
 
 #endif
 
@@ -120,7 +120,7 @@ FontPSF::FontPSF( const std::string & filePath, const fheroes2::Size & size )
     , _size( size )
 {
     if ( _data.empty() )
-        ERROR( "empty buffer" );
+        ERROR_LOG( "empty buffer" );
 }
 
 fheroes2::Image FontPSF::RenderText( const std::string & text, const uint8_t color ) const

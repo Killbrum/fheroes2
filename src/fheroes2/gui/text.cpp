@@ -21,9 +21,11 @@
  ***************************************************************************/
 
 #include <algorithm>
+#include <cassert>
 #include <cctype>
 
 #include "agg.h"
+#include "agg_image.h"
 #include "settings.h"
 #include "text.h"
 
@@ -32,6 +34,11 @@ namespace
     bool isSmallFont( int font )
     {
         return font == Font::SMALL || font == Font::YELLOW_SMALL || font == Font::GRAY_SMALL;
+    }
+
+    bool isLargeFont( int font )
+    {
+        return font == Font::WHITE_LARGE;
     }
 }
 
@@ -66,7 +73,17 @@ size_t TextAscii::Size( void ) const
 
 int TextAscii::CharWidth( int c, int f )
 {
-    return ( c < 0x21 ? ( isSmallFont( f ) ? 4 : 6 ) : fheroes2::AGG::GetLetter( c, f ).width() );
+    if ( c < 0x21 ) {
+        if ( isSmallFont( f ) )
+            return 4;
+        else if ( isLargeFont( f ) )
+            return 12;
+        else
+            return 6;
+    }
+    else {
+        return fheroes2::AGG::GetLetter( c, f ).width();
+    }
 }
 
 int TextAscii::CharHeight( int f )
@@ -76,12 +93,22 @@ int TextAscii::CharHeight( int f )
 
 int TextAscii::CharAscent( int f )
 {
-    return isSmallFont( f ) ? 8 : 13;
+    if ( isSmallFont( f ) )
+        return 8;
+    else if ( isLargeFont( f ) )
+        return 26;
+    else
+        return 13;
 }
 
 int TextAscii::CharDescent( int f )
 {
-    return isSmallFont( f ) ? 2 : 3;
+    if ( isSmallFont( f ) )
+        return 2;
+    else if ( isLargeFont( f ) )
+        return 6;
+    else
+        return 3;
 }
 
 int TextAscii::w( u32 s, u32 c ) const
@@ -165,13 +192,13 @@ void TextAscii::Blit( s32 ax, s32 ay, int maxw, fheroes2::Image & dst )
 
         const fheroes2::Sprite & sprite = fheroes2::AGG::GetLetter( *it, font );
         if ( sprite.empty() )
-            return;
+            continue;
 
         const int updatedWidth = ax + sprite.width();
         if ( maxw && ( updatedWidth - sx ) >= maxw )
             break;
 
-        fheroes2::Blit( sprite, dst, ax + sprite.x(), ay + 2 + sprite.y() );
+        fheroes2::Blit( sprite, dst, ax + sprite.x(), ay + sprite.y() + 2 );
         ax = updatedWidth;
     }
 }
@@ -227,7 +254,17 @@ size_t TextUnicode::Size( void ) const
 
 int TextUnicode::CharWidth( int c, int f )
 {
-    return ( c < 0x0021 ? ( isSmallFont( f ) ? 4 : 6 ) : fheroes2::AGG::GetUnicodeLetter( c, f ).width() );
+    if ( c < 0x0021 ) {
+        if ( isSmallFont( f ) )
+            return 4;
+        else if ( isLargeFont( f ) )
+            return 12;
+        else
+            return 6;
+    }
+    else {
+        return fheroes2::AGG::GetUnicodeLetter( c, f ).width();
+    }
 }
 
 int TextUnicode::CharHeight( int f )
@@ -315,11 +352,11 @@ void TextUnicode::Blit( s32 ax, s32 ay, int maxw, fheroes2::Image & dst )
             continue;
         }
 
-        const fheroes2::Image & sprite = fheroes2::AGG::GetUnicodeLetter( *it, font );
+        const fheroes2::Sprite & sprite = fheroes2::AGG::GetUnicodeLetter( *it, font );
         if ( sprite.empty() )
-            return;
+            continue;
 
-        fheroes2::Blit( sprite, dst, ax, ay );
+        fheroes2::Blit( sprite, dst, ax + sprite.x(), ay + sprite.y() + 2 );
         ax += sprite.width();
     }
 }
@@ -377,9 +414,11 @@ Text::~Text()
 
 Text::Text( const Text & t )
 {
+    assert( t.message != nullptr );
 #ifdef WITH_TTF
-    if ( Settings::Get().Unicode() )
-        message = new TextUnicode( static_cast<TextUnicode &>( *t.message ) );
+    const TextUnicode * unicodeText = dynamic_cast<const TextUnicode *>( t.message );
+    if ( unicodeText )
+        message = new TextUnicode( *unicodeText );
     else
 #endif
         message = new TextAscii( static_cast<TextAscii &>( *t.message ) );
@@ -390,10 +429,17 @@ Text::Text( const Text & t )
 
 Text & Text::operator=( const Text & t )
 {
+    if ( &t == this )
+        return *this;
+
+    assert( t.message != nullptr );
+
     delete message;
+
 #ifdef WITH_TTF
-    if ( Settings::Get().Unicode() )
-        message = new TextUnicode( static_cast<TextUnicode &>( *t.message ) );
+    const TextUnicode * unicodeText = dynamic_cast<const TextUnicode *>( t.message );
+    if ( unicodeText )
+        message = new TextUnicode( *unicodeText );
     else
 #endif
         message = new TextAscii( static_cast<TextAscii &>( *t.message ) );
@@ -533,10 +579,10 @@ TextBox::TextBox()
     : align( ALIGN_CENTER )
 {}
 
-TextBox::TextBox( const std::string & msg, int ft, u32 width )
+TextBox::TextBox( const std::string & msg, int ft, uint32_t width_ )
     : align( ALIGN_CENTER )
 {
-    Set( msg, ft, width );
+    Set( msg, ft, width_ );
 }
 
 TextBox::TextBox( const std::string & msg, int ft, const fheroes2::Rect & rt )
@@ -546,7 +592,7 @@ TextBox::TextBox( const std::string & msg, int ft, const fheroes2::Rect & rt )
     Blit( rt.x, rt.y );
 }
 
-void TextBox::Set( const std::string & msg, int ft, u32 width_ )
+void TextBox::Set( const std::string & msg, int ft, uint32_t width_ )
 {
     messages.clear();
     fheroes2::Rect::height = 0;
@@ -664,13 +710,21 @@ void TextBox::Append( const std::vector<u16> & msg, int ft, u32 width_ )
         if ( www + char_w >= width_ ) {
             www = 0;
             fheroes2::Rect::height += TextUnicode::CharHeight( ft );
-            if ( pos3 != space )
-                pos2 = space + 1;
 
-            if ( pos3 != space )
-                messages.push_back( Text( &msg.at( pos1 - msg.begin() ), pos2 - pos1 - 1, ft ) );
-            else
+            if ( pos3 != space ) {
+                if ( space == msg.begin() ) {
+                    if ( pos2 - pos1 < 1 ) // this should never happen!
+                        return;
+                    messages.push_back( Text( &msg.at( pos1 - msg.begin() ), pos2 - pos1 - 1, ft ) );
+                }
+                else {
+                    pos2 = space + 1;
+                    messages.push_back( Text( &msg.at( pos1 - msg.begin() ), pos2 - pos1 - 1, ft ) );
+                }
+            }
+            else {
                 messages.push_back( Text( &msg.at( pos1 - msg.begin() ), pos2 - pos1, ft ) );
+            }
 
             pos1 = pos2;
             space = pos3;

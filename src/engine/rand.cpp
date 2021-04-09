@@ -21,17 +21,15 @@
  ***************************************************************************/
 
 #include <cstdlib>
-#include <ctime>
-#include <iterator>
-#include <random>
 
+#include "logging.h"
 #include "rand.h"
-#include "system.h"
 
-namespace
+std::mt19937 & Rand::CurrentThreadRandomDevice()
 {
-    std::random_device s_rd;
-    std::mt19937 s_gen( s_rd() );
+    thread_local static std::random_device s_rd;
+    thread_local static std::mt19937 s_gen( s_rd() );
+    return s_gen;
 }
 
 uint32_t Rand::Get( uint32_t from, uint32_t to )
@@ -39,9 +37,20 @@ uint32_t Rand::Get( uint32_t from, uint32_t to )
     if ( to == 0 || from > to )
         std::swap( from, to );
 
-    std::uniform_int_distribution<> distrib( from, to );
+    std::uniform_int_distribution<uint32_t> distrib( from, to );
 
-    return static_cast<uint32_t>( distrib( s_gen ) );
+    return distrib( CurrentThreadRandomDevice() );
+}
+
+uint32_t Rand::GetWithSeed( uint32_t from, uint32_t to, uint32_t seed )
+{
+    if ( from > to )
+        std::swap( from, to );
+
+    std::uniform_int_distribution<uint32_t> distrib( from, to );
+    std::mt19937 seededGen( seed );
+
+    return distrib( seededGen );
 }
 
 Rand::Queue::Queue( u32 size )
@@ -49,15 +58,10 @@ Rand::Queue::Queue( u32 size )
     reserve( size );
 }
 
-void Rand::Queue::Reset( void )
-{
-    clear();
-}
-
 void Rand::Queue::Push( s32 value, u32 percent )
 {
-    if ( percent )
-        push_back( std::make_pair( value, percent ) );
+    if ( percent > 0 )
+        emplace_back( value, percent );
 }
 
 size_t Rand::Queue::Size( void ) const
@@ -65,7 +69,7 @@ size_t Rand::Queue::Size( void ) const
     return size();
 }
 
-s32 Rand::Queue::Get( void )
+int32_t Rand::Queue::Get( const std::function<uint32_t( uint32_t )> & randomFunc )
 {
     std::vector<ValuePercent>::iterator it;
 
@@ -88,7 +92,7 @@ s32 Rand::Queue::Get( void )
     for ( ; it != end(); ++it )
         max += ( *it ).second;
 
-    uint32_t rand = Rand::Get( max );
+    uint32_t rand = randomFunc( max );
     uint32_t amount = 0;
 
     it = begin();
@@ -98,6 +102,16 @@ s32 Rand::Queue::Get( void )
             return ( *it ).first;
     }
 
-    ERROR( "weight not found, return 0" );
+    ERROR_LOG( "weight not found, return 0" );
     return 0;
+}
+
+int32_t Rand::Queue::Get()
+{
+    return Rand::Queue::Get( []( uint32_t max ) { return Rand::Get( 0, max ); } );
+}
+
+int32_t Rand::Queue::GetWithSeed( uint32_t seed )
+{
+    return Rand::Queue::Get( [seed]( uint32_t max ) { return Rand::GetWithSeed( 0, max, seed ); } );
 }

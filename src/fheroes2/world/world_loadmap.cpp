@@ -23,26 +23,31 @@
 #include <algorithm>
 #include <functional>
 
-#include "agg.h"
-#include "ai.h"
+#include "agg_image.h"
 #include "artifact.h"
 #include "castle.h"
 #include "difficulty.h"
-#include "error.h"
 #include "game.h"
 #include "game_over.h"
 #include "game_static.h"
 #include "heroes.h"
+#include "icn.h"
 #include "kingdom.h"
+#include "logging.h"
 #include "maps_actions.h"
 #include "maps_tiles.h"
 #include "mp2.h"
 #include "pairs.h"
 #include "race.h"
+#include "rand.h"
 #include "resource.h"
-#include "settings.h"
 #include "text.h"
 #include "world.h"
+
+namespace
+{
+    const int32_t ultimateArtifactOffset = 9;
+}
 
 namespace GameStatic
 {
@@ -51,7 +56,7 @@ namespace GameStatic
 
 #ifdef WITH_ZLIB
 #include "zzlib.h"
-std::vector<u8> DecodeBase64AndUncomress( std::string base64 )
+std::vector<u8> DecodeBase64AndUncomress( const std::string & base64 )
 {
     std::vector<u8> zdata = decodeBase64( base64 );
     StreamBuf sb( zdata );
@@ -108,7 +113,7 @@ namespace Maps
     }
 }
 
-TiXmlElement & operator>>( TiXmlElement & doc, MapsTiles & /*tiles*/ )
+TiXmlElement & operator>>( TiXmlElement & doc, const MapsTiles & /*tiles*/ )
 {
     TiXmlElement * xml_tile = doc.FirstChildElement( "tile" );
     for ( ; xml_tile; xml_tile = xml_tile->NextSiblingElement( "tile" ) ) {
@@ -127,14 +132,14 @@ TiXmlElement & operator>>( TiXmlElement & doc, MapsTiles & /*tiles*/ )
 TiXmlElement & operator>>( TiXmlElement & doc, Army & army )
 {
     army.Clean();
-    int position = 0;
 
     TiXmlElement * xml_troop = doc.FirstChildElement( "troop" );
-    for ( ; xml_troop; xml_troop = xml_troop->NextSiblingElement( "troop" ) ) {
+    for ( int position = 0; xml_troop; xml_troop = xml_troop->NextSiblingElement( "troop" ) ) {
         int type, count;
         xml_troop->Attribute( "type", &type );
         xml_troop->Attribute( "count", &count );
-        Troop * troop = army.GetTroop( position++ );
+        Troop * troop = army.GetTroop( position );
+        ++position;
         if ( troop )
             troop->Set( type, count );
     }
@@ -180,7 +185,7 @@ TiXmlElement & operator>>( TiXmlElement & doc, Castle & town )
     if ( 1 != custom3 && 1 != custom2 ) {
         town.building |= DWELLING_MONSTER1;
         u32 dwelling2 = 0;
-        switch ( Settings::Get().GameDifficulty() ) {
+        switch ( Game::getDifficulty() ) {
         case Difficulty::EASY:
             dwelling2 = 80;
             break;
@@ -363,7 +368,7 @@ TiXmlElement & operator>>( TiXmlElement & doc, Heroes & hero )
     return doc;
 }
 
-TiXmlElement & operator>>( TiXmlElement & doc, AllHeroes & /*heroes*/ )
+TiXmlElement & operator>>( TiXmlElement & doc, const AllHeroes & /*heroes*/ )
 {
     TiXmlElement * xml_hero = doc.FirstChildElement( "hero" );
     for ( ; xml_hero; xml_hero = xml_hero->NextSiblingElement( "hero" ) ) {
@@ -381,10 +386,10 @@ TiXmlElement & operator>>( TiXmlElement & doc, AllHeroes & /*heroes*/ )
             jail = object == MP2::OBJ_JAIL;
 
             if ( !jail ) {
-                VERBOSE( "xml error: heroes not found"
-                         << ", "
-                         << "posx: " << posx << ", "
-                         << "posy: " << posy );
+                VERBOSE_LOG( "xml error: heroes not found"
+                             << ", "
+                             << "posx: " << posx << ", "
+                             << "posy: " << posy );
                 continue;
             }
         }
@@ -394,18 +399,18 @@ TiXmlElement & operator>>( TiXmlElement & doc, AllHeroes & /*heroes*/ )
 
         if ( !jail ) {
             colorRace = Maps::Tiles::ColorRaceFromHeroSprite( tile.GetObjectSpriteIndex() );
-            Kingdom & kingdom = world.GetKingdom( colorRace.first );
+            const Kingdom & kingdom = world.GetKingdom( colorRace.first );
 
             if ( colorRace.second == Race::RAND && colorRace.first != Color::NONE )
                 colorRace.second = kingdom.GetRace();
 
             // check heroes max count
             if ( !kingdom.AllowRecruitHero( false, 0 ) ) {
-                DEBUG( DBG_GAME, DBG_WARN,
-                       "kingdom recruil full, skip hero"
-                           << ", "
-                           << "posx: " << posx << ", "
-                           << "posy: " << posy );
+                DEBUG_LOG( DBG_GAME, DBG_WARN,
+                           "kingdom recruil full, skip hero"
+                               << ", "
+                               << "posx: " << posx << ", "
+                               << "posy: " << posy );
                 continue;
             }
         }
@@ -462,19 +467,19 @@ TiXmlElement & operator>>( TiXmlElement & doc, MapSphinx & riddle )
     riddle.artifact = artifact ? artifact - 1 : Artifact::UNKNOWN;
     riddle.valid = true;
 
-    TiXmlElement * xml_answers = doc.FirstChildElement( "answers" );
+    const TiXmlElement * xml_answers = doc.FirstChildElement( "answers" );
     if ( xml_answers ) {
         TiXmlElement * xml_answer = doc.FirstChildElement( "answer" );
         for ( ; xml_answer; xml_answer = xml_answer->NextSiblingElement( "answer" ) )
             if ( xml_answer->GetText() )
-                riddle.answers.push_back( xml_answer->GetText() );
+                riddle.answers.emplace_back( xml_answer->GetText() );
     }
 
     TiXmlElement * xml_resources = doc.FirstChildElement( "resources" );
     if ( xml_resources )
         *xml_resources >> riddle.resources;
 
-    TiXmlElement * xml_msg = doc.FirstChildElement( "msg" );
+    const TiXmlElement * xml_msg = doc.FirstChildElement( "msg" );
     if ( xml_msg && xml_msg->GetText() )
         riddle.message = xml_msg->GetText();
 
@@ -504,7 +509,7 @@ TiXmlElement & operator>>( TiXmlElement & doc, MapEvent & event )
     if ( xml_resources )
         *xml_resources >> event.resources;
 
-    TiXmlElement * xml_msg = doc.FirstChildElement( "msg" );
+    const TiXmlElement * xml_msg = doc.FirstChildElement( "msg" );
     if ( xml_msg && xml_msg->GetText() )
         event.message = xml_msg->GetText();
 
@@ -529,7 +534,7 @@ TiXmlElement & operator>>( TiXmlElement & doc, EventDate & event )
     if ( xml_resources )
         *xml_resources >> event.resource;
 
-    TiXmlElement * xml_msg = doc.FirstChildElement( "msg" );
+    const TiXmlElement * xml_msg = doc.FirstChildElement( "msg" );
     if ( xml_msg && xml_msg->GetText() )
         event.message = xml_msg->GetText();
 
@@ -540,7 +545,7 @@ TiXmlElement & operator>>( TiXmlElement & doc, EventsDate & events )
 {
     TiXmlElement * xml_event = doc.FirstChildElement( "event" );
     for ( ; xml_event; xml_event = xml_event->NextSiblingElement( "event" ) ) {
-        events.push_back( EventDate() );
+        events.emplace_back( EventDate() );
         *xml_event >> events.back();
     }
 
@@ -552,7 +557,7 @@ TiXmlElement & operator>>( TiXmlElement & doc, Rumors & rumors )
     TiXmlElement * xml_msg = doc.FirstChildElement( "msg" );
     for ( ; xml_msg; xml_msg = xml_msg->NextSiblingElement( "msg" ) )
         if ( xml_msg->GetText() )
-            rumors.push_back( xml_msg->GetText() );
+            rumors.emplace_back( xml_msg->GetText() );
 
     return doc;
 }
@@ -619,7 +624,7 @@ TiXmlElement & operator>>( TiXmlElement & doc, MapMonster & obj )
         int mul = 4;
 
         // set random count
-        switch ( Settings::Get().GameDifficulty() ) {
+        switch ( Game::getDifficulty() ) {
         case Difficulty::EASY:
             mul = 3;
             break;
@@ -897,7 +902,7 @@ bool World::LoadMapMAP( const std::string & filename )
             raw_data.push_back( 0 );
             doc.Parse( reinterpret_cast<const char *>( &raw_data[0] ) );
             if ( doc.Error() ) {
-                VERBOSE( "parse error: " << doc.ErrorDesc() );
+                VERBOSE_LOG( "parse error: " << doc.ErrorDesc() );
                 return false;
             }
             // SaveMemToFile(raw_data, "raw.data");
@@ -923,7 +928,7 @@ bool World::LoadMapMP2( const std::string & filename )
 
     StreamFile fs;
     if ( !fs.open( filename, "rb" ) ) {
-        DEBUG( DBG_GAME | DBG_ENGINE, DBG_WARN, "file not found " << filename.c_str() );
+        DEBUG_LOG( DBG_GAME | DBG_ENGINE, DBG_WARN, "file not found " << filename.c_str() );
         return false;
     }
 
@@ -935,7 +940,7 @@ bool World::LoadMapMP2( const std::string & filename )
         return false;
 
     // endof
-    const u32 endof_mp2 = fs.size();
+    const size_t endof_mp2 = fs.size();
     fs.seek( endof_mp2 - 4 );
 
     // read uniq
@@ -983,19 +988,19 @@ bool World::LoadMapMP2( const std::string & filename )
     }
 
     if ( Size::w == 0 || Size::h == 0 || Size::w != Size::h ) {
-        DEBUG( DBG_GAME, DBG_WARN, "incrrect maps size" );
+        DEBUG_LOG( DBG_GAME, DBG_WARN, "incrrect maps size" );
         return false;
     }
 
+    const int32_t worldSize = w() * h();
+
     // seek to ADDONS block
-    fs.skip( w() * h() * SIZEOFMP2TILE );
+    fs.skip( worldSize * SIZEOFMP2TILE );
 
     // read all addons
     std::vector<MP2::mp2addon_t> vec_mp2addons( fs.getLE32() /* count mp2addon_t */ );
 
-    for ( std::vector<MP2::mp2addon_t>::iterator it = vec_mp2addons.begin(); it != vec_mp2addons.end(); ++it ) {
-        MP2::mp2addon_t & mp2addon = *it;
-
+    for ( MP2::mp2addon_t & mp2addon : vec_mp2addons ) {
         mp2addon.indexAddon = fs.getLE16();
         mp2addon.objectNameN1 = fs.get() * 2;
         mp2addon.indexNameN1 = fs.get();
@@ -1007,18 +1012,17 @@ bool World::LoadMapMP2( const std::string & filename )
         mp2addon.editorObjectOverlay = fs.getLE32();
     }
 
-    const u32 endof_addons = fs.tell();
-    DEBUG( DBG_GAME, DBG_INFO, "read all tiles addons, tellg: " << endof_addons );
+    const size_t endof_addons = fs.tell();
+    DEBUG_LOG( DBG_GAME, DBG_INFO, "read all tiles addons, tellg: " << endof_addons );
 
     // offset data
     fs.seek( MP2OFFSETDATA );
 
-    vec_tiles.resize( w() * h() );
+    vec_tiles.resize( worldSize );
 
     // read all tiles
-    for ( MapsTiles::iterator it = vec_tiles.begin(); it != vec_tiles.end(); ++it ) {
-        const size_t index = std::distance( vec_tiles.begin(), it );
-        Maps::Tiles & tile = *it;
+    for ( int32_t i = 0; i < worldSize; ++i ) {
+        Maps::Tiles & tile = vec_tiles[i];
 
         MP2::mp2tile_t mp2tile;
 
@@ -1042,7 +1046,7 @@ bool World::LoadMapMP2( const std::string & filename )
         case MP2::OBJ_EVENT:
         case MP2::OBJ_SPHINX:
         case MP2::OBJ_JAIL:
-            vec_object.push_back( index );
+            vec_object.push_back( i );
             break;
         default:
             break;
@@ -1054,12 +1058,12 @@ bool World::LoadMapMP2( const std::string & filename )
         mp2tile.editorObjectLink = fs.getLE32();
         mp2tile.editorObjectOverlay = fs.getLE32();
 
-        tile.Init( index, mp2tile );
+        tile.Init( i, mp2tile );
 
         // load all addon for current tils
         while ( offsetAddonsBlock ) {
             if ( vec_mp2addons.size() <= offsetAddonsBlock ) {
-                DEBUG( DBG_GAME, DBG_WARN, "index out of range" );
+                DEBUG_LOG( DBG_GAME, DBG_WARN, "index out of range" );
                 break;
             }
             tile.AddonsPushLevel1( vec_mp2addons[offsetAddonsBlock] );
@@ -1070,7 +1074,7 @@ bool World::LoadMapMP2( const std::string & filename )
         tile.AddonsSort();
     }
 
-    DEBUG( DBG_GAME, DBG_INFO, "read all tiles, tellg: " << fs.tell() );
+    DEBUG_LOG( DBG_GAME, DBG_INFO, "read all tiles, tellg: " << fs.tell() );
 
     // after addons
     fs.seek( endof_addons );
@@ -1123,16 +1127,16 @@ bool World::LoadMapMP2( const std::string & filename )
             break;
 
         default:
-            DEBUG( DBG_GAME, DBG_WARN,
-                   "castle block: "
-                       << "unknown id: " << id << ", maps index: " << cx + cy * w() );
+            DEBUG_LOG( DBG_GAME, DBG_WARN,
+                       "castle block: "
+                           << "unknown id: " << id << ", maps index: " << cx + cy * w() );
             break;
         }
         // preload in to capture objects cache
         map_captureobj.Set( Maps::GetIndexFromAbsPoint( cx, cy ), MP2::OBJ_CASTLE, Color::NONE );
     }
 
-    DEBUG( DBG_GAME, DBG_INFO, "read coord castles, tellg: " << fs.tell() );
+    DEBUG_LOG( DBG_GAME, DBG_INFO, "read coord castles, tellg: " << fs.tell() );
     fs.seek( endof_addons + ( 72 * 3 ) );
 
     // cood resource kingdoms
@@ -1180,14 +1184,14 @@ bool World::LoadMapMP2( const std::string & filename )
             map_captureobj.Set( Maps::GetIndexFromAbsPoint( cx, cy ), MP2::OBJ_ABANDONEDMINE, Color::NONE );
             break;
         default:
-            DEBUG( DBG_GAME, DBG_WARN,
-                   "kingdom block: "
-                       << "unknown id: " << id << ", maps index: " << cx + cy * w() );
+            DEBUG_LOG( DBG_GAME, DBG_WARN,
+                       "kingdom block: "
+                           << "unknown id: " << id << ", maps index: " << cx + cy * w() );
             break;
         }
     }
 
-    DEBUG( DBG_GAME, DBG_INFO, "read coord other resource, tellg: " << fs.tell() );
+    DEBUG_LOG( DBG_GAME, DBG_INFO, "read coord other resource, tellg: " << fs.tell() );
     fs.seek( endof_addons + ( 72 * 3 ) + ( 144 * 3 ) );
 
     // byte: num obelisks (01 default)
@@ -1199,7 +1203,7 @@ bool World::LoadMapMP2( const std::string & filename )
         u32 l = fs.get();
         u32 h = fs.get();
 
-        // VERBOSE("dump block: 0x" << std::setw(2) << std::setfill('0') << std::hex << l <<
+        // VERBOSE_LOG("dump block: 0x" << std::setw(2) << std::setfill('0') << std::hex << l <<
         //	std::setw(2) << std::setfill('0') << std::hex << h);
 
         if ( 0 == h && 0 == l )
@@ -1236,9 +1240,9 @@ bool World::LoadMapMP2( const std::string & filename )
             case MP2::OBJ_CASTLE:
                 // add castle
                 if ( SIZEOFMP2CASTLE != pblock.size() ) {
-                    DEBUG( DBG_GAME, DBG_WARN,
-                           "read castle: "
-                               << "incorrect size block: " << pblock.size() );
+                    DEBUG_LOG( DBG_GAME, DBG_WARN,
+                               "read castle: "
+                                   << "incorrect size block: " << pblock.size() );
                 }
                 else {
                     Castle * castle = GetCastle( Maps::GetPoint( findobject ) );
@@ -1248,9 +1252,9 @@ bool World::LoadMapMP2( const std::string & filename )
                         map_captureobj.SetColor( tile.GetIndex(), castle->GetColor() );
                     }
                     else {
-                        DEBUG( DBG_GAME, DBG_WARN,
-                               "load castle: "
-                                   << "not found, index: " << findobject );
+                        DEBUG_LOG( DBG_GAME, DBG_WARN,
+                                   "load castle: "
+                                       << "not found, index: " << findobject );
                     }
                 }
                 break;
@@ -1258,9 +1262,9 @@ bool World::LoadMapMP2( const std::string & filename )
             case MP2::OBJ_RNDCASTLE:
                 // add rnd castle
                 if ( SIZEOFMP2CASTLE != pblock.size() ) {
-                    DEBUG( DBG_GAME, DBG_WARN,
-                           "read castle: "
-                               << "incorrect size block: " << pblock.size() );
+                    DEBUG_LOG( DBG_GAME, DBG_WARN,
+                               "read castle: "
+                                   << "incorrect size block: " << pblock.size() );
                 }
                 else {
                     Castle * castle = GetCastle( Maps::GetPoint( findobject ) );
@@ -1271,18 +1275,18 @@ bool World::LoadMapMP2( const std::string & filename )
                         map_captureobj.SetColor( tile.GetIndex(), castle->GetColor() );
                     }
                     else {
-                        DEBUG( DBG_GAME, DBG_WARN,
-                               "load castle: "
-                                   << "not found, index: " << findobject );
+                        DEBUG_LOG( DBG_GAME, DBG_WARN,
+                                   "load castle: "
+                                       << "not found, index: " << findobject );
                     }
                 }
                 break;
             case MP2::OBJ_JAIL:
                 // add jail
                 if ( SIZEOFMP2HEROES != pblock.size() ) {
-                    DEBUG( DBG_GAME, DBG_WARN,
-                           "read heroes: "
-                               << "incorrect size block: " << pblock.size() );
+                    DEBUG_LOG( DBG_GAME, DBG_WARN,
+                               "read heroes: "
+                                   << "incorrect size block: " << pblock.size() );
                 }
                 else {
                     int race = Race::KNGT;
@@ -1317,13 +1321,13 @@ bool World::LoadMapMP2( const std::string & filename )
             case MP2::OBJ_HEROES:
                 // add heroes
                 if ( SIZEOFMP2HEROES != pblock.size() ) {
-                    DEBUG( DBG_GAME, DBG_WARN,
-                           "read heroes: "
-                               << "incorrect size block: " << pblock.size() );
+                    DEBUG_LOG( DBG_GAME, DBG_WARN,
+                               "read heroes: "
+                                   << "incorrect size block: " << pblock.size() );
                 }
                 else {
                     std::pair<int, int> colorRace = Maps::Tiles::ColorRaceFromHeroSprite( tile.GetObjectSpriteIndex() );
-                    Kingdom & kingdom = GetKingdom( colorRace.first );
+                    const Kingdom & kingdom = GetKingdom( colorRace.first );
 
                     if ( colorRace.second == Race::RAND && colorRace.first != Color::NONE )
                         colorRace.second = kingdom.GetRace();
@@ -1342,7 +1346,7 @@ bool World::LoadMapMP2( const std::string & filename )
                             hero->LoadFromMP2( findobject, colorRace.first, colorRace.second, StreamBuf( pblock ) );
                     }
                     else {
-                        DEBUG( DBG_GAME, DBG_WARN, "load heroes maximum" );
+                        DEBUG_LOG( DBG_GAME, DBG_WARN, "load heroes maximum" );
                     }
                 }
                 break;
@@ -1379,26 +1383,26 @@ bool World::LoadMapMP2( const std::string & filename )
         else if ( 0x00 == pblock[0] ) {
             // add event day
             if ( SIZEOFMP2EVENT - 1 < pblock.size() && 1 == pblock[42] ) {
-                vec_eventsday.push_back( EventDate() );
+                vec_eventsday.emplace_back( EventDate() );
                 vec_eventsday.back().LoadFromMP2( StreamBuf( pblock ) );
             }
             // add rumors
             else if ( SIZEOFMP2RUMOR - 1 < pblock.size() ) {
                 if ( pblock[8] ) {
                     vec_rumors.push_back( Game::GetEncodeString( StreamBuf( &pblock[8], pblock.size() - 8 ).toString() ) );
-                    DEBUG( DBG_GAME, DBG_INFO, "add rumors: " << vec_rumors.back() );
+                    DEBUG_LOG( DBG_GAME, DBG_INFO, "add rumors: " << vec_rumors.back() );
                 }
             }
         }
         // debug
         else {
-            DEBUG( DBG_GAME, DBG_WARN, "read maps: unknown block addons, size: " << pblock.size() );
+            DEBUG_LOG( DBG_GAME, DBG_WARN, "read maps: unknown block addons, size: " << pblock.size() );
         }
     }
 
     ProcessNewMap();
 
-    DEBUG( DBG_GAME, DBG_INFO, "end load" );
+    DEBUG_LOG( DBG_GAME, DBG_INFO, "end load" );
     return true;
 }
 
@@ -1507,7 +1511,7 @@ void World::ProcessNewMap()
 
     // update wins, loss conditions
     if ( GameOver::WINS_HERO & Settings::Get().ConditionWins() ) {
-        Heroes * hero = GetHeroes( Settings::Get().WinsMapsPositionObject() );
+        const Heroes * hero = GetHeroes( Settings::Get().WinsMapsPositionObject() );
         heroes_cond_wins = hero ? hero->GetID() : Heroes::UNKNOWN;
     }
     if ( GameOver::LOSS_HERO & Settings::Get().ConditionLoss() ) {
@@ -1531,12 +1535,12 @@ void World::ProcessNewMap()
         // get first castle position
         Kingdom & kingdom = GetKingdom( Color::GetFirst( Players::HumanColors() ) );
 
-        if ( kingdom.GetCastles().size() ) {
+        if ( !kingdom.GetCastles().empty() ) {
             const Castle * castle = kingdom.GetCastles().front();
-            Heroes * hero = vec_heroes.Get( Heroes::SANDYSANDY );
+            const Point & cp = castle->GetCenter();
+            Heroes * hero = vec_heroes.Get( Heroes::DEBUG_HERO );
 
-            if ( hero ) {
-                const Point & cp = castle->GetCenter();
+            if ( hero && !world.GetTiles( cp.x, cp.y + 1 ).GetHeroes() ) {
                 hero->Recruit( castle->GetColor(), Point( cp.x, cp.y + 1 ) );
             }
         }
@@ -1553,16 +1557,22 @@ void World::ProcessNewMap()
         MapsIndexes pools;
         pools.reserve( vec_tiles.size() / 2 );
 
-        for ( size_t ii = 0; ii < vec_tiles.size(); ++ii ) {
-            const Maps::Tiles & tile = vec_tiles[ii];
-            const s32 x = tile.GetIndex() % w();
-            const s32 y = tile.GetIndex() / w();
-            if ( tile.GoodForUltimateArtifact() && x > 5 && x < w() - 5 && y > 5 && y < h() - 5 )
-                pools.push_back( tile.GetIndex() );
+        for ( size_t i = 0; i < vec_tiles.size(); ++i ) {
+            const Maps::Tiles & tile = vec_tiles[i];
+            const int32_t x = tile.GetIndex() % w();
+            if ( x < ultimateArtifactOffset || x >= w() - ultimateArtifactOffset )
+                continue;
+
+            const int32_t y = tile.GetIndex() / w();
+            if ( y < ultimateArtifactOffset || y >= h() - ultimateArtifactOffset )
+                continue;
+
+            if ( tile.GoodForUltimateArtifact() )
+                pools.emplace_back( tile.GetIndex() );
         }
 
-        if ( pools.size() ) {
-            const s32 pos = *Rand::Get( pools );
+        if ( !pools.empty() ) {
+            const int32_t pos = Rand::Get( pools );
             ultimate_artifact.Set( pos, Artifact::Rand( Artifact::ART_ULTIMATE ) );
             ultimate_pos = Maps::GetPoint( pos );
         }
@@ -1576,44 +1586,43 @@ void World::ProcessNewMap()
         ultimate_pos = ( *it ).GetCenter();
     }
 
-    std::string rumor = _( "The ultimate artifact is really the %{name}." );
-    StringReplace( rumor, "%{name}", ultimate_artifact.GetName() );
-    vec_rumors.push_back( rumor );
+    vec_rumors.emplace_back( _( "The ultimate artifact is really the %{name}." ) );
+    StringReplace( vec_rumors.back(), "%{name}", ultimate_artifact.GetName() );
 
-    rumor = _( "The ultimate artifact may be found in the %{name} regions of the world." );
+    vec_rumors.emplace_back( _( "The ultimate artifact may be found in the %{name} regions of the world." ) );
 
     if ( world.h() / 3 > ultimate_pos.y ) {
         if ( world.w() / 3 > ultimate_pos.x )
-            StringReplace( rumor, "%{name}", _( "north-west" ) );
+            StringReplace( vec_rumors.back(), "%{name}", _( "north-west" ) );
         else if ( 2 * world.w() / 3 > ultimate_pos.x )
-            StringReplace( rumor, "%{name}", _( "north" ) );
+            StringReplace( vec_rumors.back(), "%{name}", _( "north" ) );
         else
-            StringReplace( rumor, "%{name}", _( "north-east" ) );
+            StringReplace( vec_rumors.back(), "%{name}", _( "north-east" ) );
     }
     else if ( 2 * world.h() / 3 > ultimate_pos.y ) {
         if ( world.w() / 3 > ultimate_pos.x )
-            StringReplace( rumor, "%{name}", _( "west" ) );
+            StringReplace( vec_rumors.back(), "%{name}", _( "west" ) );
         else if ( 2 * world.w() / 3 > ultimate_pos.x )
-            StringReplace( rumor, "%{name}", _( "center" ) );
+            StringReplace( vec_rumors.back(), "%{name}", _( "center" ) );
         else
-            StringReplace( rumor, "%{name}", _( "east" ) );
+            StringReplace( vec_rumors.back(), "%{name}", _( "east" ) );
     }
     else {
         if ( world.w() / 3 > ultimate_pos.x )
-            StringReplace( rumor, "%{name}", _( "south-west" ) );
+            StringReplace( vec_rumors.back(), "%{name}", _( "south-west" ) );
         else if ( 2 * world.w() / 3 > ultimate_pos.x )
-            StringReplace( rumor, "%{name}", _( "south" ) );
+            StringReplace( vec_rumors.back(), "%{name}", _( "south" ) );
         else
-            StringReplace( rumor, "%{name}", _( "south-east" ) );
+            StringReplace( vec_rumors.back(), "%{name}", _( "south-east" ) );
     }
-    vec_rumors.push_back( rumor );
 
-    vec_rumors.push_back( _( "The truth is out there." ) );
-    vec_rumors.push_back( _( "The dark side is stronger." ) );
-    vec_rumors.push_back( _( "The end of the world is near." ) );
-    vec_rumors.push_back( _( "The bones of Lord Slayer are buried in the foundation of the arena." ) );
-    vec_rumors.push_back( _( "A Black Dragon will take out a Titan any day of the week." ) );
-    vec_rumors.push_back( _( "He told her: Yada yada yada...  and then she said: Blah, blah, blah..." ) );
+    vec_rumors.emplace_back( _( "The truth is out there." ) );
+    vec_rumors.emplace_back( _( "The dark side is stronger." ) );
+    vec_rumors.emplace_back( _( "The end of the world is near." ) );
+    vec_rumors.emplace_back( _( "The bones of Lord Slayer are buried in the foundation of the arena." ) );
+    vec_rumors.emplace_back( _( "A Black Dragon will take out a Titan any day of the week." ) );
+    vec_rumors.emplace_back( _( "He told her: Yada yada yada...  and then she said: Blah, blah, blah..." ) );
+    vec_rumors.emplace_back( _( "An unknown force is being ressurected..." ) );
 
-    vec_rumors.push_back( _( "Check the newest version of game at\nhttps://github.com/ihhub/\nfheroes2/releases" ) );
+    vec_rumors.emplace_back( _( "Check the newest version of game at\nhttps://github.com/ihhub/\nfheroes2/releases" ) );
 }

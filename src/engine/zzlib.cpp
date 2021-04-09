@@ -25,8 +25,7 @@
 #include <sstream>
 #include <zlib.h>
 
-#include "error.h"
-#include "system.h"
+#include "logging.h"
 #include "zzlib.h"
 
 std::vector<u8> zlibDecompress( const u8 * src, size_t srcsz, size_t realsz )
@@ -51,7 +50,7 @@ std::vector<u8> zlibDecompress( const u8 * src, size_t srcsz, size_t realsz )
             res.clear();
             std::ostringstream os;
             os << "zlib error:" << ret;
-            ERROR( os.str().c_str() );
+            ERROR_LOG( os.str().c_str() );
         }
     }
 
@@ -73,31 +72,11 @@ std::vector<u8> zlibCompress( const u8 * src, size_t srcsz )
             res.clear();
             std::ostringstream os;
             os << "zlib error:" << ret;
-            ERROR( os.str().c_str() );
+            ERROR_LOG( os.str().c_str() );
         }
     }
 
     return res;
-}
-
-bool ZSurface::Load( int w, int h, int bpp, int pitch, u32 rmask, u32 gmask, u32 bmask, u32 amask, const u8 * p, size_t s )
-{
-    buf = zlibDecompress( p, s );
-
-    if ( !buf.empty() ) {
-        SDL_Surface * sf = SDL_CreateRGBSurfaceFrom( &buf[0], w, h, bpp, pitch, rmask, gmask, bmask, amask );
-
-#if SDL_VERSION_ATLEAST( 2, 0, 0 )
-        SDL_SetSurfaceBlendMode( sf, SDL_BLENDMODE_NONE );
-#endif
-        if ( !sf )
-            Error::Except( __FUNCTION__, SDL_GetError() );
-
-        Set( sf );
-        return true;
-    }
-
-    return false;
 }
 
 bool ZStreamFile::read( const std::string & fn, size_t offset )
@@ -110,7 +89,13 @@ bool ZStreamFile::read( const std::string & fn, size_t offset )
             sf.seek( offset );
 #ifdef WITH_ZLIB
         const u32 size0 = sf.get32(); // raw size
+        if ( size0 == 0 ) {
+            return false;
+        }
         const u32 size1 = sf.get32(); // zip size
+        if ( size1 == 0 ) {
+            return false;
+        }
         sf.skip( 4 ); // old stream format
         std::vector<u8> zip = sf.getRaw( size1 );
         std::vector<u8> raw = zlibDecompress( &zip[0], zip.size(), size0 );
@@ -118,6 +103,9 @@ bool ZStreamFile::read( const std::string & fn, size_t offset )
         seek( 0 );
 #else
         const u32 size0 = sf.get32(); // raw size
+        if ( size0 == 0 ) {
+            return false;
+        }
         std::vector<u8> raw = sf.getRaw( size0 );
         putRaw( &raw[0], raw.size() );
         seek( 0 );

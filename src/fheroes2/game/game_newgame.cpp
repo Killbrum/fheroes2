@@ -20,91 +20,26 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
+#include <cassert>
 #include <sstream>
 
 #include "agg.h"
+#include "agg_image.h"
+#include "audio_mixer.h"
 #include "audio_music.h"
+#include "campaign_savedata.h"
 #include "cursor.h"
 #include "dialog.h"
 #include "game.h"
 #include "game_video.h"
 #include "gamedefs.h"
+#include "icn.h"
 #include "mus.h"
 #include "settings.h"
 #include "text.h"
 #include "ui_button.h"
 #include "ui_tool.h"
 #include "world.h"
-
-namespace
-{
-    const std::string rolandCampaignDescription[] = {_(
-        "Roland needs you to defeat the lords near his castle to begin his war of rebellion against his brother.  They are not allied with each other, so they will spend"
-        " most of their time fighting with one another.  Victory is yours when you have defeated all of their castles and heroes." )};
-
-    const std::string archibaldCampaignDescription[] = {_(
-        "King Archibald requires you to defeat the three enemies in this region.  They are not allied with one another, so they will spend most of their energy fighting"
-        " amongst themselves.  You will win when you own all of the enemy castles and there are no more heroes left to fight." )};
-
-    void DrawCampaignScenarioIcon( int icnId, int iconId, const fheroes2::Point & offset, const fheroes2::Point & pos )
-    {
-        fheroes2::Blit( fheroes2::AGG::GetICN( icnId, iconId ), fheroes2::Display::instance(), offset.x + pos.x, offset.y + pos.y );
-    }
-
-    bool hasEnding( std::string const & fullString, std::string const & ending )
-    {
-        if ( fullString.length() >= ending.length() )
-            return ( 0 == fullString.compare( fullString.length() - ending.length(), ending.length(), ending ) );
-        else
-            return false;
-    }
-
-    std::vector<Maps::FileInfo> GetCampaignMaps( const std::vector<std::string> & fileNames )
-    {
-        const ListFiles files = Settings::Get().GetListFiles( "maps", ".h2c" );
-
-        std::vector<Maps::FileInfo> maps;
-
-        for ( size_t i = 0; i < fileNames.size(); ++i ) {
-            bool isPresent = false;
-            for ( ListFiles::const_iterator file = files.begin(); file != files.end(); ++file ) {
-                if ( hasEnding( *file, fileNames[i] ) ) {
-                    Maps::FileInfo fi;
-                    if ( fi.ReadMP2( *file ) ) {
-                        maps.push_back( fi );
-                        isPresent = true;
-                        break;
-                    }
-                }
-            }
-            if ( !isPresent )
-                return std::vector<Maps::FileInfo>();
-        }
-
-        return maps;
-    }
-
-    std::vector<Maps::FileInfo> GetRolandCampaign()
-    {
-        const std::vector<std::string> maps = {"CAMPG01.H2C", "CAMPG02.H2C", "CAMPG03.H2C", "CAMPG04.H2C", "CAMPG05.H2C", "CAMPG05B.H2C",
-                                               "CAMPG06.H2C", "CAMPG07.H2C", "CAMPG08.H2C", "CAMPG09.H2C", "CAMPG10.H2C"};
-
-        return GetCampaignMaps( maps );
-    }
-
-    std::vector<Maps::FileInfo> GetArchibaldCampaign()
-    {
-        const std::vector<std::string> maps = {"CAMPE01.H2C", "CAMPE02.H2C", "CAMPE03.H2C", "CAMPE04.H2C", "CAMPE05.H2C", "CAMPE05B.H2C",
-                                               "CAMPE06.H2C", "CAMPE07.H2C", "CAMPE08.H2C", "CAMPE09.H2C", "CAMPE10.H2C", "CAMPE11.H2C"};
-
-        return GetCampaignMaps( maps );
-    }
-
-    bool IsCampaignPresent()
-    {
-        return !GetRolandCampaign().empty() && !GetArchibaldCampaign().empty();
-    }
-}
 
 int Game::NewStandard( void )
 {
@@ -130,14 +65,13 @@ int Game::NewHotSeat( void )
     if ( conf.GameType() == Game::TYPE_CAMPAIGN )
         conf.SetCurrentFileInfo( Maps::FileInfo() );
 
-    conf.SetGameType( conf.GameType() | Game::TYPE_HOTSEAT );
-
     if ( conf.IsGameType( Game::TYPE_BATTLEONLY ) ) {
         conf.SetPreferablyCountPlayers( 2 );
         world.NewMaps( 10, 10 );
         return StartBattleOnly();
     }
     else {
+        conf.SetGameType( Game::TYPE_HOTSEAT );
         const u32 select = SelectCountPlayers();
         if ( select ) {
             conf.SetPreferablyCountPlayers( select );
@@ -147,7 +81,7 @@ int Game::NewHotSeat( void )
     return Game::MAINMENU;
 }
 
-int Game::NewCampain( void )
+int Game::NewCampaign()
 {
     Settings::Get().SetGameType( Game::TYPE_CAMPAIGN );
 
@@ -167,164 +101,22 @@ int Game::NewCampain( void )
     campaignRoi.emplace_back( 382 + roiOffset.x, 58 + roiOffset.y, 222, 298 );
     campaignRoi.emplace_back( 30 + roiOffset.x, 59 + roiOffset.y, 224, 297 );
 
-    Video::ShowVideo( Settings::GetLastFile( System::ConcatePath( "heroes2", "anim" ), "INTRO.SMK" ), false );
-    Video::ShowVideo( Settings::GetLastFile( System::ConcatePath( "heroes2", "anim" ), "CHOOSEW.SMK" ), false );
-    const size_t chosenCampaign = Video::ShowVideo( Settings::GetLastFile( System::ConcatePath( "heroes2", "anim" ), "CHOOSE.SMK" ), true, campaignRoi );
-    const bool goodCampaign = chosenCampaign == 0;
+    // Reset all sound and music before playing videos
+    AGG::ResetMixer();
+    Video::ShowVideo( "INTRO.SMK", Video::VideoAction::DO_NOTHING );
 
-    AGG::PlayMusic( MUS::VICTORY );
-    Settings & conf = Settings::Get();
+    AGG::ResetMixer();
+    Video::ShowVideo( "CHOOSEW.SMK", Video::VideoAction::DO_NOTHING );
+    const size_t chosenCampaign = Video::ShowVideo( "CHOOSE.SMK", Video::VideoAction::LOOP_VIDEO, campaignRoi );
 
-    // cursor
-    Cursor & cursor = Cursor::Get();
-    cursor.Hide();
-    cursor.SetThemes( cursor.POINTER );
+    Campaign::CampaignSaveData & campaignSaveData = Campaign::CampaignSaveData::Get();
+    campaignSaveData.reset();
+    campaignSaveData.setCampaignID( chosenCampaign );
+    campaignSaveData.setCurrentScenarioID( 0 );
 
-    const fheroes2::Sprite & backgroundImage = fheroes2::AGG::GetICN( goodCampaign ? ICN::CAMPBKGG : ICN::CAMPBKGE, 0 );
-    const fheroes2::Point top( ( display.width() - backgroundImage.width() ) / 2, ( display.height() - backgroundImage.height() ) / 2 );
+    AGG::PlayMusic( MUS::VICTORY, true, true );
 
-    fheroes2::Blit( backgroundImage, display, top.x, top.y );
-
-    fheroes2::Button buttonViewIntro( top.x + 22, top.y + 431, goodCampaign ? ICN::CAMPXTRG : ICN::CAMPXTRE, 0, 1 );
-    fheroes2::Button buttonOk( top.x + 367, top.y + 431, goodCampaign ? ICN::CAMPXTRG : ICN::CAMPXTRE, 4, 5 );
-    fheroes2::Button buttonCancel( top.x + 511, top.y + 431, goodCampaign ? ICN::CAMPXTRG : ICN::CAMPXTRE, 6, 7 );
-
-    const fheroes2::Point optionButtonOffset( 590, 199 );
-    const int32_t optionButtonStep = 22;
-
-    const fheroes2::Sprite & pressedButton = fheroes2::AGG::GetICN( ICN::CAMPXTRG, 8 );
-    fheroes2::Sprite releaseButton( pressedButton.width(), pressedButton.height(), pressedButton.x(), pressedButton.y() );
-    fheroes2::Copy( backgroundImage, optionButtonOffset.x + pressedButton.x(), optionButtonOffset.y + pressedButton.y(), releaseButton, 0, 0, releaseButton.width(),
-                    releaseButton.height() );
-
-    fheroes2::ButtonSprite firstChoice( optionButtonOffset.x + top.x, optionButtonOffset.y + top.y, releaseButton, pressedButton );
-    fheroes2::ButtonSprite secondChoice( optionButtonOffset.x + top.x, optionButtonOffset.y + optionButtonStep + top.y, releaseButton, pressedButton );
-    fheroes2::ButtonSprite thirdChoice( optionButtonOffset.x + top.x, optionButtonOffset.y + optionButtonStep * 2 + top.y, releaseButton, pressedButton );
-
-    firstChoice.press();
-
-    fheroes2::OptionButtonGroup buttonGroup;
-    buttonGroup.addButton( &firstChoice );
-    buttonGroup.addButton( &secondChoice );
-    buttonGroup.addButton( &thirdChoice );
-
-    const std::vector<Maps::FileInfo> & campaignMap = goodCampaign ? GetRolandCampaign() : GetArchibaldCampaign();
-
-    buttonViewIntro.disable();
-    buttonViewIntro.draw();
-    if ( campaignMap.empty() )
-        buttonOk.disable();
-    buttonOk.draw();
-    buttonCancel.draw();
-
-    firstChoice.draw();
-    secondChoice.draw();
-    thirdChoice.draw();
-
-    Text textDaysSpent( "0", Font::BIG );
-    textDaysSpent.Blit( top.x + 574 + textDaysSpent.w() / 2, top.y + 31 );
-
-    if ( !campaignMap.empty() ) {
-        const std::string & desc = campaignMap[0].description;
-        TextBox mapName( desc.substr( 1, desc.length() - 2 ), Font::BIG, 200 );
-        mapName.Blit( top.x + 197, top.y + 97 - mapName.h() / 2 );
-
-        Text campaignMapId( "1", Font::BIG );
-        campaignMapId.Blit( top.x + 172 - campaignMapId.w() / 2, top.y + 97 - campaignMapId.h() / 2 );
-
-        TextBox mapDescription( goodCampaign ? rolandCampaignDescription[0] : archibaldCampaignDescription[0], Font::BIG, 356 );
-        mapDescription.Blit( top.x + 34, top.y + 132 );
-
-        Text choice1( _( "2000 Gold" ), Font::BIG );
-        choice1.Blit( top.x + 425, top.y + 209 - choice1.h() / 2 );
-        Text choice2( goodCampaign ? _( "Thunder Mace" ) : _( "Mage's Ring" ), Font::BIG );
-        choice2.Blit( top.x + 425, top.y + 209 + 22 - choice2.h() / 2 );
-        Text choice3( goodCampaign ? _( "Gauntlets" ) : _( "Minor Scroll" ), Font::BIG );
-        choice3.Blit( top.x + 425, top.y + 209 + 44 - choice3.h() / 2 );
-    }
-    else {
-        TextBox textCaption( "We are working hard to ensure that the support of Campaign would arrive as soon as possible", Font::YELLOW_BIG, 350 );
-        textCaption.Blit( top.x + 40, top.y + 140 );
-
-        TextBox textDescription( "Campaign Game mode is under construction", Font::BIG, 350 );
-        textDescription.Blit( top.x + 40, top.y + 200 );
-    }
-
-    const int iconsId = goodCampaign ? ICN::CAMPXTRG : ICN::CAMPXTRE;
-    const fheroes2::Point trackOffset = fheroes2::Point( top.x + 39, top.y + 294 );
-    fheroes2::Blit( fheroes2::AGG::GetICN( goodCampaign ? ICN::CTRACK00 : ICN::CTRACK03, 0 ), display, top.x + 39, top.y + 294 );
-    if ( goodCampaign ) {
-        DrawCampaignScenarioIcon( iconsId, 14, trackOffset, {-2, 40} );
-        DrawCampaignScenarioIcon( iconsId, 12, trackOffset, {72, 40} );
-        DrawCampaignScenarioIcon( iconsId, 12, trackOffset, {109, -2} );
-        DrawCampaignScenarioIcon( iconsId, 12, trackOffset, {146, 40} );
-        DrawCampaignScenarioIcon( iconsId, 12, trackOffset, {220, 40} );
-        DrawCampaignScenarioIcon( iconsId, 12, trackOffset, {294, 40} );
-        DrawCampaignScenarioIcon( iconsId, 12, trackOffset, {368, 82} );
-        DrawCampaignScenarioIcon( iconsId, 12, trackOffset, {368, -2} );
-        DrawCampaignScenarioIcon( iconsId, 12, trackOffset, {442, 40} );
-        DrawCampaignScenarioIcon( iconsId, 12, trackOffset, {516, 40} );
-    }
-    else {
-        DrawCampaignScenarioIcon( iconsId, 17, trackOffset, {-2, 40} );
-        DrawCampaignScenarioIcon( iconsId, 12, trackOffset, {72, 40} );
-        DrawCampaignScenarioIcon( iconsId, 12, trackOffset, {146, -2} );
-        DrawCampaignScenarioIcon( iconsId, 12, trackOffset, {146, 82} );
-        DrawCampaignScenarioIcon( iconsId, 12, trackOffset, {220, 40} );
-        DrawCampaignScenarioIcon( iconsId, 12, trackOffset, {294, 40} );
-        DrawCampaignScenarioIcon( iconsId, 12, trackOffset, {331, -2} );
-        DrawCampaignScenarioIcon( iconsId, 12, trackOffset, {368, 40} );
-        DrawCampaignScenarioIcon( iconsId, 12, trackOffset, {442, -2} );
-        DrawCampaignScenarioIcon( iconsId, 12, trackOffset, {442, 82} );
-        DrawCampaignScenarioIcon( iconsId, 12, trackOffset, {516, 40} );
-    }
-
-    LocalEvent & le = LocalEvent::Get();
-
-    cursor.Show();
-    display.render();
-
-    while ( le.HandleEvents() ) {
-        if ( !buttonCancel.isDisabled() )
-            le.MousePressLeft( buttonCancel.area() ) ? buttonCancel.drawOnPress() : buttonCancel.drawOnRelease();
-        if ( !buttonOk.isDisabled() )
-            le.MousePressLeft( buttonOk.area() ) ? buttonOk.drawOnPress() : buttonOk.drawOnRelease();
-
-        if ( le.MousePressLeft( firstChoice.area() ) ) {
-            firstChoice.press();
-            buttonGroup.draw();
-        }
-        if ( le.MousePressLeft( secondChoice.area() ) ) {
-            secondChoice.press();
-            buttonGroup.draw();
-        }
-        if ( le.MousePressLeft( thirdChoice.area() ) ) {
-            thirdChoice.press();
-            buttonGroup.draw();
-        }
-
-        if ( le.MouseClickLeft( buttonCancel.area() ) )
-            return Game::NEWGAME;
-        else if ( !buttonOk.isDisabled() && le.MouseClickLeft( buttonOk.area() ) ) {
-            conf.SetCurrentFileInfo( campaignMap[0] );
-            Players & players = conf.GetPlayers();
-            players.SetStartGame();
-            if ( conf.ExtGameUseFade() )
-                fheroes2::FadeDisplay();
-            Game::ShowMapLoadingText();
-            conf.SetGameType( Game::TYPE_CAMPAIGN );
-
-            if ( !world.LoadMapMP2( campaignMap[0].file ) ) {
-                Dialog::Message( "Campaign Game loading failure", "Please make sure that campaign files are correct and present", Font::SMALL, Dialog::OK );
-                conf.SetCurrentFileInfo( Maps::FileInfo() );
-                continue;
-            }
-
-            return Game::STARTGAME;
-        }
-    }
-
-    return Game::NEWGAME;
+    return Game::SELECT_CAMPAIGN_SCENARIO;
 }
 
 #ifdef NETWORK_ENABLE
@@ -367,8 +159,6 @@ int Game::NewNetwork( void )
         le.MousePressLeft( buttonGuest.area() ) ? buttonGuest.drawOnPress() : buttonGuest.drawOnRelease();
         le.MousePressLeft( buttonCancelGame.area() ) ? buttonCancelGame.drawOnPress() : buttonCancelGame.drawOnRelease();
 
-        // if(le.MouseClickLeft(buttonHost) || HotKeyPressEvent(EVENT_BUTTON_HOST)) return NetworkHost();
-        // if(le.MouseClickLeft(buttonGuest) || HotKeyPressEvent(EVENT_BUTTON_GUEST)) return NetworkGuest();
         if ( HotKeyPressEvent( EVENT_DEFAULT_EXIT ) || le.MouseClickLeft( buttonCancelGame.area() ) )
             return MAINMENU;
 
@@ -390,7 +180,7 @@ int Game::NewNetwork( void )
 int Game::NewGame( void )
 {
     Mixer::Pause();
-    AGG::PlayMusic( MUS::MAINMENU );
+    AGG::PlayMusic( MUS::MAINMENU, true, true );
     Settings & conf = Settings::Get();
 
     // reset last save name
@@ -428,7 +218,7 @@ int Game::NewGame( void )
     fheroes2::Button buttonSettings( buttonXPos, buttonYPos + buttonYStep * 4, ICN::BTNDCCFG, 4, 5 );
     fheroes2::Button buttonCancelGame( buttonXPos, buttonYPos + buttonYStep * 5, ICN::BTNNEWGM, 6, 7 );
 
-    if ( !IsCampaignPresent() ) {
+    if ( !IsOriginalCampaignPresent() ) {
         buttonCampainGame.disable();
     }
 
@@ -457,8 +247,8 @@ int Game::NewGame( void )
 
         if ( HotKeyPressEvent( EVENT_BUTTON_STANDARD ) || le.MouseClickLeft( buttonStandartGame.area() ) )
             return NEWSTANDARD;
-        if ( buttonCampainGame.isEnabled() && ( HotKeyPressEvent( EVENT_BUTTON_CAMPAIN ) || le.MouseClickLeft( buttonCampainGame.area() ) ) )
-            return NEWCAMPAIN;
+        if ( buttonCampainGame.isEnabled() && ( HotKeyPressEvent( EVENT_BUTTON_CAMPAIGN ) || le.MouseClickLeft( buttonCampainGame.area() ) ) )
+            return NEWCAMPAIGN;
         if ( HotKeyPressEvent( EVENT_BUTTON_MULTI ) || le.MouseClickLeft( buttonMultiGame.area() ) )
             return NEWMULTI;
         if ( HotKeyPressEvent( EVENT_BUTTON_SETTINGS ) || le.MouseClickLeft( buttonSettings.area() ) ) {

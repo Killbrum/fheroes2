@@ -22,23 +22,21 @@
 
 #include <math.h>
 
-#include "agg.h"
-#include "bin_info.h"
 #include "castle.h"
 #include "difficulty.h"
-#include "error.h"
 #include "game.h"
 #include "game_static.h"
 #include "icn.h"
+#include "logging.h"
 #include "luck.h"
 #include "m82.h"
 #include "monster.h"
 #include "morale.h"
 #include "mp2.h"
 #include "race.h"
-#include "settings.h"
+#include "rand.h"
 #include "speed.h"
-#include "spell.h"
+#include "translations.h"
 
 struct monstats_t
 {
@@ -336,7 +334,7 @@ StreamBase & operator<<( StreamBase & msg, const MonsterStaticData & /*obj*/ )
     return msg;
 }
 
-StreamBase & operator>>( StreamBase & msg, MonsterStaticData & /*obj*/ )
+StreamBase & operator>>( StreamBase & msg, const MonsterStaticData & /*obj*/ )
 {
     u32 monsters_size;
     msg >> monsters_size;
@@ -344,11 +342,6 @@ StreamBase & operator>>( StreamBase & msg, MonsterStaticData & /*obj*/ )
     for ( u32 ii = 0; ii < monsters_size; ++ii )
         msg >> monsters[ii];
     return msg;
-}
-
-float Monster::GetUpgradeRatio( void )
-{
-    return GameStatic::GetMonsterUpgradeRatio();
 }
 
 uint32_t Monster::GetICNByMonsterID( uint32_t monsterID )
@@ -458,7 +451,7 @@ void Monster::UpdateStats( const std::string & spec )
         }
     }
     else
-        VERBOSE( spec << ": " << doc.ErrorDesc() );
+        VERBOSE_LOG( spec << ": " << doc.ErrorDesc() );
 #else
     (void)spec;
 #endif
@@ -630,7 +623,7 @@ double Monster::GetMonsterStrength( int attack, int defense ) const
         attack = GetAttack();
 
     if ( defense == -1 )
-        attack = GetDefense();
+        defense = GetDefense();
 
     const double attackDefense = 1.0 + attack * 0.1 + defense * 0.05;
     const double effectiveHP = GetHitPoints() * ( ignoreRetaliation() ? 1.4 : 1 );
@@ -743,7 +736,7 @@ u32 Monster::GetRNDSize( bool skip_factor ) const
     if ( !skip_factor && Settings::Get().ExtWorldNeutralArmyDifficultyScaling() ) {
         uint32_t factor = 100;
 
-        switch ( Settings::Get().GameDifficulty() ) {
+        switch ( Game::getDifficulty() ) {
         case Difficulty::EASY:
             factor = 80;
             break;
@@ -1349,7 +1342,7 @@ Monster Monster::Rand( level_t level )
                 monstersVec[monster.GetRandomUnitLevel() - LEVEL0 - 1].push_back( monster );
         }
     }
-    return *Rand::Get( monstersVec[level - LEVEL0 - 1] );
+    return Rand::Get( monstersVec[level - LEVEL0 - 1] );
 }
 
 u32 Monster::Rand4WeekOf( void )
@@ -1983,13 +1976,17 @@ payment_t Monster::GetUpgradeCost( void ) const
     Monster upgr = GetUpgrade();
     payment_t pay = id != upgr.id ? upgr.GetCost() - GetCost() : GetCost();
 
-    pay.wood = static_cast<s32>( pay.wood * GetUpgradeRatio() );
-    pay.mercury = static_cast<s32>( pay.mercury * GetUpgradeRatio() );
-    pay.ore = static_cast<s32>( pay.ore * GetUpgradeRatio() );
-    pay.sulfur = static_cast<s32>( pay.sulfur * GetUpgradeRatio() );
-    pay.crystal = static_cast<s32>( pay.crystal * GetUpgradeRatio() );
-    pay.gems = static_cast<s32>( pay.gems * GetUpgradeRatio() );
-    pay.gold = static_cast<s32>( pay.gold * GetUpgradeRatio() );
+    if ( GameStatic::isCustomMonsterUpgradeOption() ) {
+        const float upgradeRatio = GameStatic::GetMonsterUpgradeRatio();
+
+        pay.wood = static_cast<int32_t>( pay.wood * upgradeRatio );
+        pay.mercury = static_cast<int32_t>( pay.mercury * upgradeRatio );
+        pay.ore = static_cast<int32_t>( pay.ore * upgradeRatio );
+        pay.sulfur = static_cast<int32_t>( pay.sulfur * upgradeRatio );
+        pay.crystal = static_cast<int32_t>( pay.crystal * upgradeRatio );
+        pay.gems = static_cast<int32_t>( pay.gems * upgradeRatio );
+        pay.gold = static_cast<int32_t>( pay.gold * upgradeRatio );
+    }
 
     return pay;
 }
@@ -2040,7 +2037,7 @@ void RandomMonsterAnimation::increment()
         // make sure both are empty to avoid leftovers in case of mismatch
         _offsetSet.clear();
 
-        const int moveId = *Rand::Get( _validMoves );
+        const int moveId = Rand::Get( _validMoves );
 
         if ( moveId == Monster_Info::STATIC ) {
             const u32 counter = Rand::Get( 10, 20 );
@@ -2168,7 +2165,7 @@ StreamBase & operator<<( StreamBase & msg, const Monster & /*obj*/ )
     return msg;
 }
 
-StreamBase & operator>>( StreamBase & msg, Monster & /*obj*/ )
+StreamBase & operator>>( StreamBase & msg, const Monster & /*obj*/ )
 {
     return msg;
 }

@@ -21,10 +21,7 @@
  ***************************************************************************/
 
 #include "position.h"
-#include "game.h"
 #include "maps.h"
-#include "settings.h"
-#include "world.h"
 
 MapPosition::MapPosition( const Point & pt )
     : center( pt )
@@ -33,11 +30,6 @@ MapPosition::MapPosition( const Point & pt )
 bool MapPosition::operator==( s32 index ) const
 {
     return index == GetIndex();
-}
-
-const Point & MapPosition::GetCenter( void ) const
-{
-    return center;
 }
 
 s32 MapPosition::GetIndex( void ) const
@@ -50,7 +42,7 @@ void MapPosition::SetCenter( const Point & pt )
     center = pt;
 }
 
-void MapPosition::SetIndex( s32 index )
+void MapPosition::SetIndex( const int32_t index )
 {
     center = Maps::isValidAbsIndex( index ) ? Maps::GetPoint( index ) : Point( -1, -1 );
 }
@@ -63,9 +55,4 @@ StreamBase & operator<<( StreamBase & sb, const MapPosition & st )
 StreamBase & operator>>( StreamBase & sb, MapPosition & st )
 {
     return sb >> st.center;
-}
-
-bool MapPosition::isPosition( const Point & pt ) const
-{
-    return pt == center;
 }

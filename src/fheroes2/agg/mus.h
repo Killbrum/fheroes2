@@ -77,14 +77,14 @@ namespace MUS
         UNKNOWN
     };
 
-    enum OGG_MUSIC_TYPE
+    enum class OGG_MUSIC_TYPE : int
     {
         MAPPED,
         DOS_VERSION,
         WIN_VERSION
     };
 
-    const std::string GetString( int musicTrack, OGG_MUSIC_TYPE musicType );
+    std::string GetString( int musicTrack, OGG_MUSIC_TYPE musicType );
 
     int FromGround( int );
     int FromRace( int );
